@@ -32,6 +32,7 @@ public class BlockMetaData {
   private long rowCount;
   private long totalByteSize;
   private String path;
+  private short ordinal;
 
   public BlockMetaData() {
   }
@@ -100,6 +101,7 @@ public class BlockMetaData {
    * @return the starting pos of first column
    */
   public long getStartingPos() {
+    // TODO replace with RowGroup.getFile_offset(); - in Reader only !!!
     return getColumns().get(0).getStartingPos();
   }
   @Override
@@ -111,10 +113,21 @@ public class BlockMetaData {
    * @return the compressed size of all columns
    */
   public long getCompressedSize() {
+    // TODO replace with RowGroup.getTotal_compressed_size(); - in Reader only!! Writer uses it to set RowGroup.tot_compr_size
     long totalSize = 0;
     for (ColumnChunkMetaData col : getColumns()) {
       totalSize += col.getTotalSize();
     }
     return totalSize;
+  }
+
+
+  public void setOrdinal(short ordinal) {
+    this.ordinal = ordinal;
+  }
+
+
+  public short getOrdinal() {
+    return ordinal;
   }
 }
