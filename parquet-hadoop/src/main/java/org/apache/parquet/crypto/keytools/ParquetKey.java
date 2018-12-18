@@ -18,14 +18,29 @@
  */
 
 
-package org.apache.parquet.crypto;
+package org.apache.parquet.crypto.keytools;
 
-public interface AADPrefixRetriever {
+import java.nio.charset.StandardCharsets;
 
-  /**
-   * 
-   * @param aadMetaData
-   * @return
-   */
-  public byte[] getAADPrefix(byte[] aadMetaData);
+public class ParquetKey {
+  
+  private final byte[] keyBytes;
+  private final byte[] keyMetaData;
+  
+  public ParquetKey(byte[] keyBytes, String keyID) {
+    this(keyBytes, keyID.getBytes(StandardCharsets.UTF_8));
+  }
+  
+  public ParquetKey(byte[] keyBytes, byte[] keyMetaData) {
+    this.keyBytes = keyBytes;
+    this.keyMetaData = keyMetaData;
+  }
+  
+  public byte[] getBytes() {
+    return keyBytes;
+  }
+
+  public byte[] getMetaData() {
+    return keyMetaData;
+  }
 }

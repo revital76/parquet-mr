@@ -46,7 +46,7 @@ public class InternalColumnEncryptionSetup {
       else {
         EncryptionWithColumnKey withColumnKeyStruct = new EncryptionWithColumnKey(Arrays.asList(encryptionProperties.getPath().toArray()));
         if (null != encryptionProperties.getKeyMetaData()) {
-          withColumnKeyStruct.setColumn_key_metadata(encryptionProperties.getKeyMetaData());
+          withColumnKeyStruct.setKey_metadata(encryptionProperties.getKeyMetaData());
         }
         columnCryptoMetaData =  ColumnCryptoMetaData.ENCRYPTION_WITH_COLUMN_KEY(withColumnKeyStruct);
       }

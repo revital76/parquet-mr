@@ -20,6 +20,7 @@
 
 package org.apache.parquet.crypto;
 
+
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Map;
@@ -33,29 +34,34 @@ public class FileEncryptionProperties {
   
   private static final ParquetCipher ALGORITHM_DEFAULT = ParquetCipher.AES_GCM_V1;
   private static final boolean ENCRYPT_THE_REST_DEFAULT = true;
+  private static final boolean ENCRYPTED_FOOTER_DEFAULT = true;
   
   private final EncryptionAlgorithm algorithm;
-  private final byte[] footerEncryptionKey;
-  private final byte[] footerEncryptionKeyMetadata;
-  private final byte[] footerSigningKey;
-  private final byte[] footerSigningKeyMetadata;
+  private final boolean encryptedFooter;
+  private final byte[] footerKey;
+  private final byte[] footerKeyMetadata;
   private final byte[] fileAAD;
   private final Map<ColumnPath, ColumnEncryptionProperties> columnPropertyMap;
   private final boolean encryptTheRest;
 
   
   private FileEncryptionProperties(ParquetCipher cipher, 
-      byte[] footerEncryptionKey, byte[] footerEncryptionKeyMetadata, 
-      byte[] footerSigningKey, byte[] footerSigningKeyMetadata, 
-      byte[] aadPrefixBytes, byte[] aadMetaData, Map<ColumnPath, ColumnEncryptionProperties> columnPropertyMap, 
+      byte[] footerKey, byte[] footerKeyMetadata, boolean encryptedFooter,
+      byte[] aadPrefix, boolean storeAadPrefixInFile,
+      Map<ColumnPath, ColumnEncryptionProperties> columnPropertyMap, 
       boolean encryptTheRest) {
-
-    if (null == footerEncryptionKey) {
+    
+    if (null == footerKey) {
+      throw new IllegalArgumentException("Footer key is null");
+    }
+    
+    if (! (footerKey.length == 16 || footerKey.length == 24 || footerKey.length == 32)) {
+      throw new IllegalArgumentException("Wrong footer key length " + footerKey.length);
+    }
+    
+    if (!encryptedFooter) {
       if (encryptTheRest) {
-        throw new IllegalArgumentException("Encrypt the rest with null footer key");
-      }
-      if (null != footerEncryptionKeyMetadata) {
-        throw new IllegalArgumentException("Setting key metadata for null footer key");
+        throw new IllegalArgumentException("Encrypt the rest is true with plaintext footer");
       }
       if (null == columnPropertyMap) {
         throw new IllegalArgumentException("Footer and all columns are unencrypted (no properties set)");
@@ -66,7 +72,7 @@ public class FileEncryptionProperties {
         for (ColumnEncryptionProperties columnProperties : columnPropertyMap.values()) {
           if (columnProperties.isEncrypted()) {
             if (null == columnProperties.getKeyBytes()) {
-              throw new IllegalArgumentException("Encrypt column with null footer key. Column: " + 
+              throw new IllegalArgumentException("No encryption key for column: " + 
                   columnProperties.getPath());
             }
             allAreUnencrypted = false;
@@ -77,41 +83,41 @@ public class FileEncryptionProperties {
         }
       }
     }
-    else {
-      if (! (footerEncryptionKey.length == 16 || footerEncryptionKey.length == 24 || footerEncryptionKey.length == 32)) {
-           throw new IllegalArgumentException("Wrong footer encryption key length " + footerEncryptionKey.length);
-      }
-    }
+
     
-    if (null != footerSigningKey) {
-      if (! (footerSigningKey.length == 16 || footerSigningKey.length == 24 || footerSigningKey.length == 32)) {
-        throw new IllegalArgumentException("Wrong footer signing key length " + footerSigningKey.length);
-      }
-    }
-    
-    this.algorithm = cipher.getEncryptionAlgorithm();
     SecureRandom random = new SecureRandom();
     byte[] aadFileUnique = new byte[AAD_FILE_UNIQUE_LENGTH];
     random.nextBytes(aadFileUnique);
-    if (algorithm.isSetAES_GCM_V1()) {
-      algorithm.getAES_GCM_V1().setAad_file_unique(aadFileUnique);
-      if (null != aadMetaData) algorithm.getAES_GCM_V1().setAad_metadata(aadMetaData);
-    }
-    else {
-      algorithm.getAES_GCM_CTR_V1().setAad_file_unique(aadFileUnique);
-      if (null != aadMetaData) algorithm.getAES_GCM_CTR_V1().setAad_metadata(aadMetaData);
-    }
-    if (null == aadPrefixBytes) {
+    
+    boolean supplyAadPrefix = false;
+    if (null == aadPrefix) {
       this.fileAAD = aadFileUnique;
     }
     else {
-      this.fileAAD = AesEncryptor.concatByteArrays(aadPrefixBytes, aadFileUnique);
+      this.fileAAD = AesEncryptor.concatByteArrays(aadPrefix, aadFileUnique);
+      if (!storeAadPrefixInFile) supplyAadPrefix = true;
+    }
+    
+    this.algorithm = cipher.getEncryptionAlgorithm();
+
+    if (algorithm.isSetAES_GCM_V1()) {
+      algorithm.getAES_GCM_V1().setAad_file_unique(aadFileUnique);
+      algorithm.getAES_GCM_V1().setSupply_aad_prefix(supplyAadPrefix);
+      if (null != aadPrefix && storeAadPrefixInFile) {
+        algorithm.getAES_GCM_V1().setAad_prefix(aadPrefix);
+      }
+    }
+    else {
+      algorithm.getAES_GCM_CTR_V1().setAad_file_unique(aadFileUnique);
+      algorithm.getAES_GCM_CTR_V1().setSupply_aad_prefix(supplyAadPrefix);
+      if (null != aadPrefix && storeAadPrefixInFile) {
+        algorithm.getAES_GCM_CTR_V1().setAad_prefix(aadPrefix);
+      }
     }
 
-    this.footerEncryptionKey = footerEncryptionKey;
-    this.footerEncryptionKeyMetadata = footerEncryptionKeyMetadata;
-    this.footerSigningKey = footerSigningKey;
-    this.footerSigningKeyMetadata = footerSigningKeyMetadata;
+    this.footerKey = footerKey;
+    this.footerKeyMetadata = footerKeyMetadata;
+    this.encryptedFooter = encryptedFooter;
     this.columnPropertyMap = columnPropertyMap;
     this.encryptTheRest = encryptTheRest;
   }
@@ -122,26 +128,32 @@ public class FileEncryptionProperties {
    * Key length must be either 16, 24 or 32 bytes.
    * If null, footer won't be encrypted. At least one column must be encrypted then.
    */
-  public static Builder builder(byte[] footerEncryptionKey) {
-    return new Builder(footerEncryptionKey);
+  public static Builder builder(byte[] footerKey) {
+    return new Builder(footerKey);
   }
   
+  
   public static class Builder {
-    private final byte[] footerEncryptionKey;
+    private byte[] footerKey;
+    private boolean encryptedFooter;
     private ParquetCipher parquetCipher;
-    private byte[] footerEncryptionKeyMetadata;
-    private byte[] footerSigningKey;
-    private byte[] footerSigningKeyMetadata;
-    private byte[] aadPrefixBytes;
-    private byte[] aadMetaData;
+    private byte[] footerKeyMetadata;
+    private byte[] aadPrefix;
     private Map<ColumnPath, ColumnEncryptionProperties> columnPropertyMap;
     private boolean encryptTheRest;
+    private boolean storeAadPrefixInFile;
     
     
-    private Builder(byte[] footerEncryptionKey) {
-      this.footerEncryptionKey = footerEncryptionKey;
+    private Builder(byte[] footerKey) {
       this.parquetCipher = ALGORITHM_DEFAULT;
+      this.encryptedFooter = ENCRYPTED_FOOTER_DEFAULT;
       this.encryptTheRest = ENCRYPT_THE_REST_DEFAULT;
+      this.footerKey = footerKey;
+    }
+    
+    public Builder withEncryptedFooter(boolean encryptedFooter) {
+      this.encryptedFooter = encryptedFooter;
+      return this;
     }
     
     public Builder withAlgorithm(ParquetCipher parquetCipher) {
@@ -149,62 +161,21 @@ public class FileEncryptionProperties {
       return this;
     }
     
-    /**
-    * Set a key retrieval meta data.
-    * use either withKeyMetaData or withKeyID, not both
-    * @param footerEncryptionKeyMetadata 
-    */
-    public Builder withFooterEncryptionKeyMetadata(byte[] footerEncryptionKeyMetadata) {
-      if (null == footerEncryptionKeyMetadata) {
+    public Builder withFooterKeyID(String keyID) {
+      if (null == keyID) {
         return this;
       }
-      if (null != this.footerEncryptionKeyMetadata) {
+      return withFooterKeyMetadata(keyID.getBytes(StandardCharsets.UTF_8));
+    }
+    
+    public Builder withFooterKeyMetadata(byte[] footerKeyMetadata) {
+      if (null == footerKeyMetadata) {
+        return this;
+      }
+      if (null != this.footerKeyMetadata) {
         throw new IllegalArgumentException("Footer key metadata already set");
       }
-      this.footerEncryptionKeyMetadata = footerEncryptionKeyMetadata;
-      return this;
-    }
-    
-    /**
-     * Set a key retrieval meta data (converted from String).
-     * use either withKeyMetaData or withKeyID, not both
-     * @param keyId will be converted to metadata (UTF-8 array).
-     */
-    public Builder withFooterKeyID(String keyId) {
-      if (null == keyId) {
-        return this;
-      }
-      byte[] metadata = keyId.getBytes(StandardCharsets.UTF_8);
-      return withFooterEncryptionKeyMetadata(metadata);
-    }
-    
-    /**
-    * Set a footer signing key (for plaintext footers)
-    * @param footerSigningKey 
-    */
-    public Builder withFooterSigningKey(byte[] footerSigningKey) {
-      if (null == footerSigningKey) {
-        return this;
-      }
-      if (null != this.footerEncryptionKey) {
-        throw new IllegalArgumentException("Can set signing key only for plaintext footer");
-      }
-      this.footerSigningKey = footerSigningKey;
-      return this;
-    }
-    
-    /**
-    * Set a footer signing key metadata (for plaintext footers)
-    * @param footerSigningKeyMetadata 
-    */
-    public Builder withFooterSigningKeyMetadata(byte[] footerSigningKeyMetadata) {
-      if (null == footerSigningKeyMetadata) {
-        return this;
-      }
-      if (null != this.footerEncryptionKey) {
-        throw new IllegalArgumentException("Can set signing key metadata only for plaintext footer");
-      }
-      this.footerSigningKeyMetadata = footerSigningKeyMetadata;
+      this.footerKeyMetadata = footerKeyMetadata;
       return this;
     }
     
@@ -216,32 +187,27 @@ public class FileEncryptionProperties {
       if (null == aadPrefixBytes) {
         return this;
       }
-      if (null != this.aadPrefixBytes) {
+      if (null != this.aadPrefix) {
         throw new IllegalArgumentException("AAD Prefix already set");
       }
-      this.aadPrefixBytes = aadPrefixBytes;
+      this.aadPrefix = aadPrefixBytes;
+      this.storeAadPrefixInFile = true;
       return this;
     }
     
     /**
-     * Set AAD prefix retrieval meta data.
-     * @param aadMetadata
+     * Set the AES-GCM additional authenticated data (AAD) Prefix.
+     * @param aadBytes
      */
-    public Builder withAADMetaData(byte[] aadMetadata) {
-      if (null == aadMetadata) {
-        return this;
-      }
-      if (null != this.aadMetaData) {
-        throw new IllegalArgumentException("AAD metadata already set");
-      }
-      this.aadMetaData = aadMetadata;
+    public Builder withoutAADPrefixStorage() {
+      this.storeAadPrefixInFile = false;
       return this;
     }
     
     /**
      * Set column encryption properties. 
      * The map doesn't have to include all columns in a file. If encryptTheRest is true, 
-     * the rest of the columns (not in the map) will be encrypted with the file footer key. 
+     * the rest of the columns (not in the map) will be encrypted with the footer encryption key. 
      * If encryptTheRest is false, the rest of the columns will be left unencrypted.
      * @param columnPropertyMap
      * @param encryptTheRest  
@@ -261,9 +227,9 @@ public class FileEncryptionProperties {
     
     public FileEncryptionProperties build() {
       return new FileEncryptionProperties(parquetCipher, 
-          footerEncryptionKey, footerEncryptionKeyMetadata, 
-          footerSigningKey, footerSigningKeyMetadata, 
-          aadPrefixBytes, aadMetaData, columnPropertyMap, encryptTheRest);
+          footerKey, footerKeyMetadata, encryptedFooter,
+          aadPrefix, storeAadPrefixInFile, 
+          columnPropertyMap, encryptTheRest);
     }
   }
   
@@ -272,19 +238,19 @@ public class FileEncryptionProperties {
   }
 
   public byte[] getFooterEncryptionKey() {
-    return footerEncryptionKey;
+    return (encryptedFooter? footerKey : null);
   }
 
   public byte[] getFooterEncryptionKeyMetadata() {
-    return footerEncryptionKeyMetadata;
+    return (encryptedFooter? footerKeyMetadata : null);
   }
   
   public byte[] getFooterSigningKey() {
-    return footerSigningKey;
+    return (encryptedFooter? null: footerKey);
   }
 
   public byte[] getFooterSigningKeyMetadata() {
-    return footerSigningKeyMetadata;
+    return (encryptedFooter? null : footerKeyMetadata);
   }
 
   public ColumnEncryptionProperties getColumnProperties(ColumnPath columnPath) {
@@ -300,5 +266,9 @@ public class FileEncryptionProperties {
 
   public byte[] getFileAAD() {
     return fileAAD;
+  }
+
+  public boolean encryptedFooter() {
+    return encryptedFooter;
   }
 }

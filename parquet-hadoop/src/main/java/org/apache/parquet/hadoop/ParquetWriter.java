@@ -54,8 +54,6 @@ public class ParquetWriter<T> implements Closeable {
 
   // max size (bytes) to write as padding and the min size of a row group
   public static final int MAX_PADDING_SIZE_DEFAULT = 8 * 1024 * 1024; // 8MB
-  
-
 
   private final InternalParquetRecordWriter<T> writer;
   private final CodecFactory codecFactory;
@@ -323,7 +321,7 @@ public class ParquetWriter<T> implements Closeable {
     MessageType schema = writeContext.getSchema();
 
     ParquetFileWriter fileWriter = new ParquetFileWriter(
-        file, schema, mode, rowGroupSize, maxPaddingSize, encryptionProperties);
+        file, schema, mode, rowGroupSize, maxPaddingSize, encodingProps.getColumnIndexTruncateLength(), encryptionProperties);
     fileWriter.start();
 
     this.codecFactory = new CodecFactory(conf, encodingProps.getPageSizeThreshold());
@@ -480,6 +478,17 @@ public class ParquetWriter<T> implements Closeable {
      */
     public SELF withPageSize(int pageSize) {
       encodingPropsBuilder.withPageSize(pageSize);
+      return self();
+    }
+
+    /**
+     * Sets the Parquet format page row count limit used by the constructed writer.
+     *
+     * @param rowCount limit for the number of rows stored in a page
+     * @return this builder for method chaining
+     */
+    public SELF withPageRowCountLimit(int rowCount) {
+      encodingPropsBuilder.withPageRowCountLimit(rowCount);
       return self();
     }
 

@@ -228,28 +228,18 @@ public class ConvertCSVCommand extends BaseCommand {
       byte[] aad = outputPath.getBytes(StandardCharsets.UTF_8);
       console.info("AAD Prefix: "+outputPath+". Len: "+aad.length);
 
-      String footerEncrKeyName = "kf";
-      byte[] footerEncrKey = keyBytes;
-      byte[] footerSignKey = null;
-      byte[] footerSignKeyMetadata = null;
-      if (!encryptFooter) {
-        footerSignKeyMetadata = footerEncrKeyName.getBytes(StandardCharsets.UTF_8);
-        footerEncrKey = null;
-        footerEncrKeyName = null;
-        footerSignKey = keyBytes;
-        console.info("Plaintext Footer");
-      }
-      else {
-        console.info("Encrypted Footer");
-      }
-      eSetup = FileEncryptionProperties.builder(footerEncrKey)
+      String footerKeyName = "kf";
+      byte[] footerKeyMetadata = footerKeyName.getBytes(StandardCharsets.UTF_8);
+
+      eSetup = FileEncryptionProperties.builder(keyBytes)
+          .withEncryptedFooter(encryptFooter)
+          .withFooterKeyMetadata(footerKeyMetadata)
           .withAlgorithm(ParquetCipher.valueOf(algo))
-          .withFooterKeyID(footerEncrKeyName)
-          .withFooterSigningKey(footerSignKey)
-          .withFooterSigningKeyMetadata(footerSignKeyMetadata)
           .withAADPrefix(aad)
           .withColumnProperties(columnMD, false)
           .build();
+      console.info("Encrypted Footer: " + encryptFooter);
+      console.info("Encryption algorithm: " + algo);
     }
 
     Configuration conf = getConf();

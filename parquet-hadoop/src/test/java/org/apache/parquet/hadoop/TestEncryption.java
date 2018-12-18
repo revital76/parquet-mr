@@ -23,6 +23,7 @@ import static org.apache.parquet.hadoop.TestUtils.enforceEmptyDir;
 import static org.apache.parquet.hadoop.metadata.CompressionCodecName.UNCOMPRESSED;
 import static org.apache.parquet.schema.MessageTypeParser.parseMessageType;
 
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Random;
 
@@ -68,7 +69,7 @@ public class TestEncryption {
     byte[] encryptionKey = new byte[16];
     random.nextBytes(encryptionKey);
     FileEncryptionProperties encryptionProperties = FileEncryptionProperties.builder(encryptionKey).build();
-    FileDecryptionProperties decryptionProperties = FileDecryptionProperties.builder().withFooterDecryptionKey(encryptionKey).build();
+    FileDecryptionProperties decryptionProperties = FileDecryptionProperties.builder().withFooterKey(encryptionKey).build();
     encryptionPropertiesList[1] = encryptionProperties;
     decryptionPropertiesList[1] = decryptionProperties;
 
@@ -90,7 +91,7 @@ public class TestEncryption {
     HashMap<ColumnPath, ColumnEncryptionProperties> columnPropertiesMap = new HashMap<ColumnPath, ColumnEncryptionProperties>();
     columnPropertiesMap.put(columnProperties0.getPath(), columnProperties0);
     columnPropertiesMap.put(columnProperties1.getPath(), columnProperties1);
-    byte[] AADPrefix = root.getName().getBytes("UTF-8");
+    byte[] AADPrefix = root.getName().getBytes(StandardCharsets.UTF_8);
     encryptionProperties = FileEncryptionProperties.builder(footerKey)
         .withFooterKeyID("fk")
         .withAADPrefix(AADPrefix)
@@ -102,7 +103,6 @@ public class TestEncryption {
     keyRetriever.putKey("ck1", columnKey1);
     decryptionProperties = FileDecryptionProperties.builder()
         .withKeyRetriever(keyRetriever)
-        .withAADPrefix(AADPrefix)
         .build();
     encryptionPropertiesList[2] = encryptionProperties;
     decryptionPropertiesList[2] = decryptionProperties;
@@ -118,7 +118,9 @@ public class TestEncryption {
     decryptionPropertiesList[3] = decryptionProperties; // Same decryption properties
 
     // #4  Plaintext footer, default algorithm, key metadata, key retriever, AAD
-    encryptionProperties = FileEncryptionProperties.builder(null)
+    encryptionProperties = FileEncryptionProperties.builder(footerKey)
+        .withFooterKeyID("fk")
+        .withEncryptedFooter(false)
         .withAADPrefix(AADPrefix)
         .withColumnProperties(columnPropertiesMap, false)
         .build();

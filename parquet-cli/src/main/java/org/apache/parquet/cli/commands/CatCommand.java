@@ -107,8 +107,7 @@ public class CatCommand extends BaseCommand {
 
       dSetup = FileDecryptionProperties.builder()
           .withKeyRetriever(kr)
-          .withAADPrefix(aad)
-          .checkPlaintextFooterSignature(true)
+          //.withAADPrefix(aad)
           .build();
     }
 

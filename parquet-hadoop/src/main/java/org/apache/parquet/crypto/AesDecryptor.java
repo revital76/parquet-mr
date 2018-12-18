@@ -41,7 +41,7 @@ import java.security.GeneralSecurityException;
 import java.util.Arrays;
 
 
-class AesDecryptor implements BlockCipher.Decryptor{
+public class AesDecryptor implements BlockCipher.Decryptor{
 
   private final Mode aesMode;
   private final SecretKey aesKey;
@@ -51,7 +51,7 @@ class AesDecryptor implements BlockCipher.Decryptor{
   private final byte[] nonce;
 
 
-  AesDecryptor(Mode mode, byte[] keyBytes) throws IllegalArgumentException, IOException {
+  public AesDecryptor(Mode mode, byte[] keyBytes) throws IllegalArgumentException, IOException {
     if (null == keyBytes) {
       throw new IllegalArgumentException("Null key bytes");
     }

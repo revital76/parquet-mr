@@ -98,8 +98,7 @@ public class CatCommandCompare extends BaseCommand {
 
     FileDecryptionProperties dSetup = FileDecryptionProperties.builder()
         .withKeyRetriever(kr)
-        .withAADPrefix(aad)
-        .checkPlaintextFooterSignature(true)
+        //.withAADPrefix(aad)
         .build();
     
 

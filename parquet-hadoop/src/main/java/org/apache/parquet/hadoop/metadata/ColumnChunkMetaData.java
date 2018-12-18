@@ -25,19 +25,21 @@ import org.apache.parquet.column.EncodingStats;
 import org.apache.parquet.column.statistics.BooleanStatistics;
 import org.apache.parquet.column.statistics.Statistics;
 import org.apache.parquet.crypto.HiddenColumnException;
+import org.apache.parquet.internal.hadoop.metadata.IndexReference;
 import org.apache.parquet.schema.PrimitiveType;
 import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName;
 import org.apache.parquet.schema.Types;
+import org.apache.yetus.audience.InterfaceAudience.Private;
 
 /**
  * Column meta data for a block stored in the file footer and passed in the InputSplit
  */
 abstract public class ColumnChunkMetaData {
-  
+
   // Hidden is an encrypted column for which the reader doesn't have a key
   protected boolean hiddenColumn;
   protected ColumnPath path;
-
+  
   @Deprecated
   public static ColumnChunkMetaData get(
       ColumnPath path,
@@ -148,6 +150,10 @@ abstract public class ColumnChunkMetaData {
   public static ColumnChunkMetaData getHiddenColumn(ColumnPath path) {
     return new HiddenColumnChunkMetaData(path);
   }
+  
+  public boolean isHiddenColumn() {
+    return hiddenColumn;
+  }
 
   /**
    * @return the offset of the first byte in the chunk
@@ -161,10 +167,6 @@ abstract public class ColumnChunkMetaData {
       return dictionaryPageOffset;
     }
     return firstDataPageOffset;
-  }
-  
-  public boolean isHiddenColumn() {
-    return hiddenColumn;
   }
 
   /**
@@ -181,6 +183,9 @@ abstract public class ColumnChunkMetaData {
 
   // we save 3 references by storing together the column properties that have few distinct values
   private final ColumnChunkProperties properties;
+
+  private IndexReference columnIndexReference;
+  private IndexReference offsetIndexReference;
 
   protected ColumnChunkMetaData(ColumnChunkProperties columnChunkProperties) {
     this(null, columnChunkProperties);
@@ -199,9 +204,7 @@ abstract public class ColumnChunkMetaData {
   /**
    *
    * @return column identifier
-   * @deprecated will be removed in 2.0.0. Use {@link #getPrimitiveType()} instead.
    */
-  @Deprecated
   public ColumnPath getPath() {
     if (hiddenColumn) return path;
     return properties.getPath();
@@ -256,6 +259,40 @@ abstract public class ColumnChunkMetaData {
   abstract public Statistics getStatistics();
 
   /**
+   * @return the reference to the column index
+   */
+  @Private
+  public IndexReference getColumnIndexReference() {
+    return columnIndexReference;
+  }
+
+  /**
+   * @param indexReference
+   *          the reference to the column index
+   */
+  @Private
+  public void setColumnIndexReference(IndexReference indexReference) {
+    this.columnIndexReference = indexReference;
+  }
+
+  /**
+   * @return the reference to the offset index
+   */
+  @Private
+  public IndexReference getOffsetIndexReference() {
+    return offsetIndexReference;
+  }
+
+  /**
+   * @param offsetIndexReference
+   *          the reference to the offset index
+   */
+  @Private
+  public void setOffsetIndexReference(IndexReference offsetIndexReference) {
+    this.offsetIndexReference = offsetIndexReference;
+  }
+
+  /**
    * @return all the encodings used in this column
    */
   public Set<Encoding> getEncodings() {
@@ -273,16 +310,9 @@ abstract public class ColumnChunkMetaData {
     if (hiddenColumn) return "ColumnMetaData{" + path.toString() +" - Hidden column}";
     return "ColumnMetaData{" + properties.toString() + ", " + getFirstDataPageOffset() + "}";
   }
-
+  
   public boolean hasDictionaryPage() { 
-    long dictionaryPageOffset = getDictionaryPageOffset();
-    long firstDataPageOffset = getFirstDataPageOffset();
-    if (dictionaryPageOffset ==  0) return false;
-
-    if (dictionaryPageOffset > firstDataPageOffset) {
-      throw new RuntimeException("Dictinary page written after first data page " + dictionaryPageOffset + " " + firstDataPageOffset);
-    }
-    return true;
+    return getDictionaryPageOffset() > 0;
   }
 }
 
@@ -392,7 +422,6 @@ class IntColumnChunkMetaData extends ColumnChunkMetaData {
    return statistics;
   }
 }
-
 class LongColumnChunkMetaData extends ColumnChunkMetaData {
 
   private final long firstDataPageOffset;
@@ -516,4 +545,3 @@ class HiddenColumnChunkMetaData extends ColumnChunkMetaData {
     throw new HiddenColumnException(path.toArray()); 
   }
 }
-

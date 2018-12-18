@@ -25,6 +25,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
 
+import org.apache.parquet.crypto.AesDecryptor;
+import org.apache.parquet.crypto.AesEncryptor;
 import org.apache.parquet.crypto.DecryptionKeyRetriever;
 
 
@@ -65,20 +67,25 @@ public class WrappedKeyManager {
       // TODO check parts
       String encodedWrappedDatakey = parts[0];
       String masterKeyID = parts[1];
-      String encodedDataKey = null;
+      byte[] dataKey = null;
       if (unwrapLocally) {
-        //TODO xxx and Cache?!
+        byte[] wrappedDataKey = Base64.getDecoder().decode(encodedWrappedDatakey);
+        String encodedMasterKey = kmsClient.getKey(masterKeyID);
+        byte[] masterKey = Base64.getDecoder().decode(encodedMasterKey);
+        AesDecryptor keyDecryptor = new AesDecryptor(AesEncryptor.Mode.GCM, masterKey);
+        byte[] AAD = masterKeyID.getBytes(StandardCharsets.UTF_8);
+        dataKey = keyDecryptor.decrypt(wrappedDataKey, 0, wrappedDataKey.length, AAD);
       }
       else {
-        encodedDataKey = kmsClient.unwrapKey(encodedWrappedDatakey, masterKeyID);
+        String encodedDataKey = kmsClient.unwrapKey(encodedWrappedDatakey, masterKeyID);
+        dataKey = Base64.getDecoder().decode(encodedDataKey);
       }
-      byte[] dataKey = Base64.getDecoder().decode(encodedDataKey);
       return dataKey;
     }
   }
   
   public WrappedKeyManager(KmsClient kmsClient) {
-    this(kmsClient, false, null, null);
+    this(kmsClient, !kmsClient.supportsServerSideWrapping(), null, null);
   }
 
   public WrappedKeyManager(KmsClient kmsClient, boolean wrapLocally, WrappedKeyStore wrappedKeyStore, String fileID) {
@@ -96,15 +103,20 @@ public class WrappedKeyManager {
     keyCounter = 0;
   }
 
-  public EncryptionKey generateKey(String masterKeyID) throws IOException {
+  public ParquetKey generateKey(String masterKeyID) throws IOException {
     byte[] dataKey = new byte[16]; //TODO
     random.nextBytes(dataKey);
-    String encodedDataKey = Base64.getEncoder().encodeToString(dataKey);
     String encodedWrappedDataKey = null;
     if (wrapLocally) {
-      //TODO xxx and Cache?!
+      String encodedMasterKey = kmsClient.getKey(masterKeyID);
+      byte[] masterKey = Base64.getDecoder().decode(encodedMasterKey);
+      AesEncryptor keyEncryptor = new AesEncryptor(AesEncryptor.Mode.GCM, masterKey);
+      byte[] AAD = masterKeyID.getBytes(StandardCharsets.UTF_8);
+      byte[] wrappedDataKey = keyEncryptor.encrypt(false, dataKey, AAD);
+      encodedWrappedDataKey = Base64.getEncoder().encodeToString(wrappedDataKey);
     }
     else {
+      String encodedDataKey = Base64.getEncoder().encodeToString(dataKey);
       encodedWrappedDataKey = kmsClient.wrapKey(encodedDataKey, masterKeyID);
     }
     String wrappedKeyMaterial = encodedWrappedDataKey + ":" + masterKeyID;
@@ -118,7 +130,7 @@ public class WrappedKeyManager {
     else {
       keyMetadata  = wrappedKeyMaterial.getBytes(StandardCharsets.UTF_8);
     }
-    EncryptionKey key = new EncryptionKey(dataKey, keyMetadata);
+    ParquetKey key = new ParquetKey(dataKey, keyMetadata);
     return key;
   }
 

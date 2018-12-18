@@ -111,7 +111,6 @@ public class ColumnEncryptionProperties {
     /**
      * Set a key retrieval metadata.
      * use either withKeyMetaData or withKeyID, not both
-     * @param keyMetaData maximal length is 256 bytes.
      */
     public Builder withKeyMetaData(byte[] keyMetaData) {
       if (null == keyMetaData) {

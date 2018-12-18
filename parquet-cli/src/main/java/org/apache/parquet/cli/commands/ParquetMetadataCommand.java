@@ -31,9 +31,6 @@ import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.Encoding;
 import org.apache.parquet.column.EncodingStats;
 import org.apache.parquet.column.statistics.Statistics;
-import org.apache.parquet.crypto.FileDecryptionProperties;
-import org.apache.parquet.crypto.InternalFileDecryptor;
-import org.apache.parquet.crypto.StringKeyIdRetriever;
 import org.apache.parquet.format.converter.ParquetMetadataConverter;
 import org.apache.parquet.hadoop.ParquetFileReader;
 import org.apache.parquet.hadoop.metadata.BlockMetaData;
@@ -45,8 +42,6 @@ import org.apache.parquet.schema.PrimitiveType;
 import org.slf4j.Logger;
 import javax.annotation.Nullable;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -67,15 +62,6 @@ public class ParquetMetadataCommand extends BaseCommand {
 
   @Parameter(description = "<parquet path>")
   List<String> targets;
-  
-  @Parameter(names={"-e", "--encrypted-file"},
-      description="Cat an encrypted Parquet file")
-  boolean encrypt = false;
-  
-  @Parameter(names={"--key"},
-      description="Encryption key (base64 string)")
-  String encodedKey;
-
 
   @Override
   @SuppressWarnings("unchecked")
@@ -86,45 +72,8 @@ public class ParquetMetadataCommand extends BaseCommand {
         "Cannot process multiple Parquet files.");
 
     String source = targets.get(0);
-    
-    FileDecryptionProperties dSetup = null;
-    if (encrypt) {
-      byte[] keyBytes;
-      if (null == encodedKey) {
-        keyBytes = new byte[16];
-        for (byte i=0; i < 16; i++) {keyBytes[i] = i;}
-        String sampleKey = Base64.getEncoder().encodeToString(keyBytes);
-        console.info("Decrypting with a sample key: " +sampleKey);
-      }
-      else {
-        keyBytes = Base64.getDecoder().decode(encodedKey);
-      }
-
-      StringKeyIdRetriever kr = new StringKeyIdRetriever();
-      kr.putKey("kf", keyBytes);
-
-      for (int c=0; c < 20; c++) {
-
-        byte[] colKeyBytes = new byte[16]; 
-        for (byte i=0; i < 16; i++) {colKeyBytes[i] = (byte)(i*(c+2));}
-
-        kr.putKey("kc"+c, colKeyBytes);
-      }
-
-
-      byte[] aad = source.getBytes(StandardCharsets.UTF_8);
-      console.info("AAD Prefix: "+source+". Len: "+aad.length);
-
-
-      dSetup = FileDecryptionProperties.builder()
-          .withKeyRetriever(kr)
-          .withAADPrefix(aad)
-          .checkPlaintextFooterSignature(true)
-          .build();
-    }
-    
     ParquetMetadata footer = ParquetFileReader.readFooter(
-        getConf(), qualifiedPath(source), ParquetMetadataConverter.NO_FILTER, dSetup);
+        getConf(), qualifiedPath(source), ParquetMetadataConverter.NO_FILTER);
 
     console.info("\nFile path:  {}", source);
     console.info("Created by: {}", footer.getFileMetaData().getCreatedBy());
@@ -168,36 +117,18 @@ public class ParquetMetadataCommand extends BaseCommand {
   }
 
   private void printRowGroup(Logger console, int index, BlockMetaData rowGroup, MessageType schema) {
-    
-    console.info("");
-      
-    long start = -1;
-    try {
-      start = rowGroup.getStartingPos();
-    }
-    catch (RuntimeException e) { // TODO Wont be thrown with RowGroup.getFile_offset();
-      console.info(String.format("First column is hidden, can't calculate starting position", index));
-    }
+    long start = rowGroup.getStartingPos();
     long rowCount = rowGroup.getRowCount();
-    long compressedSize = -1;
-    try {
-      compressedSize = rowGroup.getCompressedSize();
-    }
-    catch (RuntimeException e) { //TODO Wont be thrown with RowGroup.getTotal_compressed_size();
-      console.info(String.format("Hidden column(s), can't calculate total compressed size", index));
-    }
+    long compressedSize = rowGroup.getCompressedSize();
     long uncompressedSize = rowGroup.getTotalByteSize();
     String filePath = rowGroup.getPath();
 
-    console.info(String.format("Row group %d:  start: %d count: %d. \n  Compressed  :  %s records  total: %s. \n  Uncompressed:  %s records  total: %s%s\n%s",
-        index, start, rowCount,
+    console.info(String.format("\nRow group %d:  count: %d  %s records  start: %d  total: %s%s\n%s",
+        index, rowCount,
         humanReadable(((float) compressedSize) / rowCount),
-        humanReadable(compressedSize),
-        humanReadable(((float) uncompressedSize) / rowCount),
-        humanReadable(uncompressedSize),
+        start, humanReadable(compressedSize),
         filePath != null ? " path: " + filePath : "",
         StringUtils.leftPad("", 80, '-')));
-        
 
     int size = maxSize(Iterables.transform(rowGroup.getColumns(),
         new Function<ColumnChunkMetaData, String>() {
@@ -215,14 +146,6 @@ public class ParquetMetadataCommand extends BaseCommand {
   }
 
   private void printColumnChunk(Logger console, int width, ColumnChunkMetaData column, MessageType schema) {
-    String name = column.getPath().toDotString();
-    
-    if (column.isHiddenColumn()) {
-      console.info(String.format("%-" + (width+1) + "s %-9s %s %-7s %-9s %-10s %-7s %s", 
-          name, "HIDDEN", "-", "-", "-", "-", "-", "\"-\" / \"-\""));
-      return;
-    }
-    
     String[] path = column.getPath().toArray();
     PrimitiveType type = primitive(schema, path);
     Preconditions.checkNotNull(type);
@@ -239,17 +162,19 @@ public class ParquetMetadataCommand extends BaseCommand {
         encodingStatsAsString(encodingStats);
     Statistics stats = column.getStatistics();
 
+    String name = column.getPath().toDotString();
+
     PrimitiveType.PrimitiveTypeName typeName = type.getPrimitiveTypeName();
     if (typeName == PrimitiveType.PrimitiveTypeName.FIXED_LEN_BYTE_ARRAY) {
       console.info(String.format("%-" + width + "s  FIXED[%d] %s %-7s %-9d %-8s %-7s %s",
           name, type.getTypeLength(), shortCodec(codec), encodingSummary, count,
           humanReadable(perValue), stats == null || !stats.isNumNullsSet() ? "" : String.valueOf(stats.getNumNulls()),
-          minMaxAsString(stats, type.getOriginalType())));
+          minMaxAsString(stats)));
     } else {
       console.info(String.format("%-" + width + "s  %-9s %s %-7s %-9d %-10s %-7s %s",
           name, typeName, shortCodec(codec), encodingSummary, count, humanReadable(perValue),
           stats == null || !stats.isNumNullsSet() ? "" : String.valueOf(stats.getNumNulls()),
-          minMaxAsString(stats, type.getOriginalType())));
+          minMaxAsString(stats)));
     }
   }
 }

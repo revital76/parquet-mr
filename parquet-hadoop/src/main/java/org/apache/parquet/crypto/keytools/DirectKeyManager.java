@@ -58,11 +58,11 @@ public class DirectKeyManager {
    * @throws IOException 
    * @throws  
    */
-  public EncryptionKey getKey(String dataKeyID) throws IOException {
+  public ParquetKey getKey(String dataKeyID) throws IOException {
     String encodedDek = kmsClient.getKey(dataKeyID);
     byte[] dek = Base64.getDecoder().decode(encodedDek);
     byte[] keyMetadata = dataKeyID.getBytes(StandardCharsets.UTF_8);
-    return new EncryptionKey(dek, keyMetadata);
+    return new ParquetKey(dek, keyMetadata);
   }
 
   public DecryptionKeyRetriever getKeyRetriever() {

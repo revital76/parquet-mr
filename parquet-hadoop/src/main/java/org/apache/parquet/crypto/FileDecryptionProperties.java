@@ -26,41 +26,34 @@ import org.apache.parquet.hadoop.metadata.ColumnPath;
 
 public class FileDecryptionProperties {
 
+  private static final boolean CHECK_SIGNATURE = true;
 
-  private final byte[] footerDecryptionKey;
-  private final byte[] footerSigningKey;
+  private final byte[] footerKey;
   private final DecryptionKeyRetriever keyRetriever;
-  private final AADPrefixRetriever aadPrefixRetriever;
-  private final byte[] aadPrefixBytes;
+  private final byte[] aadPrefix;
   private final Map<ColumnPath, ColumnDecryptionProperties> columnPropertyMap;
   private final boolean checkPlaintextFooterIntegrity;
   
-  private FileDecryptionProperties(byte[] footerDecryptionKey, DecryptionKeyRetriever keyRetriever,
-      byte[] footerSigningKey, boolean checkPlaintextFooterIntegrity,
-      AADPrefixRetriever aadPrefixRetriever, byte[] aadPrefixBytes, 
+  private FileDecryptionProperties(byte[] footerKey, DecryptionKeyRetriever keyRetriever,
+      boolean checkPlaintextFooterIntegrity,  byte[] aadPrefix, 
       Map<ColumnPath, ColumnDecryptionProperties> columnPropertyMap) {
     
-    if ((null == footerDecryptionKey) && (null == keyRetriever) && (null == columnPropertyMap)) {
-      throw new IllegalArgumentException("No crypto meta data specified");
+    if ((null == footerKey) && (null == keyRetriever) && (null == columnPropertyMap)) {
+      throw new IllegalArgumentException("No decryption properties are specified");
     }
-    if ((null != aadPrefixBytes) && (null != aadPrefixRetriever)) {
-      throw new IllegalArgumentException("Can't set both AAD_Prefix and AAD prefix retriever");
+    if ((null != footerKey) && 
+        !(footerKey.length == 16 || footerKey.length == 24 || footerKey.length == 32)) {
+      throw new IllegalArgumentException("Wrong footer key length " + footerKey.length);
     }
-    if ((null != footerDecryptionKey) && 
-        !(footerDecryptionKey.length == 16 || footerDecryptionKey.length == 24 || footerDecryptionKey.length == 32)) {
-      throw new IllegalArgumentException("Wrong footer decryption key length " + footerDecryptionKey.length);
+    if ((null == footerKey) && checkPlaintextFooterIntegrity && (null == keyRetriever)) {
+      throw new IllegalArgumentException("Can't check footer integrity with null footer key and null key retriever");
     }
-    if ((null != footerSigningKey) && 
-        !(footerSigningKey.length == 16 || footerSigningKey.length == 24 || footerSigningKey.length == 32)) {
-      throw new IllegalArgumentException("Wrong footer signing key length " + footerSigningKey.length);
-    }
+
     
-    this.footerDecryptionKey = footerDecryptionKey;
+    this.footerKey = footerKey;
     this.checkPlaintextFooterIntegrity = checkPlaintextFooterIntegrity;
-    this.footerSigningKey = footerSigningKey;
     this.keyRetriever = keyRetriever;
-    this.aadPrefixRetriever = aadPrefixRetriever;
-    this.aadPrefixBytes = aadPrefixBytes;
+    this.aadPrefix = aadPrefix;
     this.columnPropertyMap = columnPropertyMap;
   }
 
@@ -69,13 +62,15 @@ public class FileDecryptionProperties {
   }
   
   public static class Builder {
-    private byte[] footerDecryptionKey;
-    private byte[] footerSigningKey;
+    private byte[] footerKey;
     private DecryptionKeyRetriever keyRetriever;
-    private AADPrefixRetriever aadPrefixRetriever;
     private byte[] aadPrefixBytes;
     private Map<ColumnPath, ColumnDecryptionProperties> columnPropertyMap;
     private boolean checkPlaintextFooterIntegrity;
+    
+    private Builder() {
+      this.checkPlaintextFooterIntegrity = CHECK_SIGNATURE;
+    }
 
     /**
      * Set an explicit footer decryption key. If applied on a file that contains footer 
@@ -84,14 +79,14 @@ public class FileDecryptionProperties {
      * If explicit key is not set, decryption key will be fetched from key retriever.
      * @param footerDecryptionKey Key length must be either 16, 24 or 32 bytes. 
      */
-    public Builder withFooterDecryptionKey(byte[] footerDecryptionKey) {
-      if (null == footerDecryptionKey) {
+    public Builder withFooterKey(byte[] footerKey) {
+      if (null == footerKey) {
         return this;
       }
-      if (null != this.footerDecryptionKey) {
-        throw new IllegalArgumentException("Footer decryption key already set");
+      if (null != this.footerKey) {
+        throw new IllegalArgumentException("Footer key already set");
       }
-      this.footerDecryptionKey = footerDecryptionKey;
+      this.footerKey = footerKey;
       return this;
     }
 
@@ -132,40 +127,22 @@ public class FileDecryptionProperties {
     
     /**
      * Specify whether integrity of plaintext footer must be verified.
-     * If yes, an exception will be thrown in the following situations:
-     * - file footer is not signed (and not encrypted)
+     * If yes (default), an exception will be thrown in the following runtime situations:
      * - footer signing key is not available (not passed, or not found in key retriever)
      * - footer content and signature don't match
      * @param checkFooterIntegrity
      * @return
      */
-    public Builder checkPlaintextFooterSignature(boolean checkFooterIntegrity) {
-      this.checkPlaintextFooterIntegrity = checkFooterIntegrity;
+    public Builder withoutFooterSignatureVerification() {
+      this.checkPlaintextFooterIntegrity = false;
       return this;
     }
     
-    /**
-     * Set an explicit key for verification of plaintext footer signature. 
-     * Will be ignored if checkPlaintextFooterSignature(true) is not called.
-     * If applied on a file that contains footer signing key metadata - 
-     * the metadata will be ignored, the footer signature will be verified with this key.
-     * If explicit key is not set (and signature must be verified), signing key will be 
-     * fetched from key retriever.
-     * @param footerSigningKey Key length must be either 16, 24 or 32 bytes. 
-     */
-    public Builder withFooterSigningKey(byte[] footerSigningKey) {
-      if (null == footerSigningKey) {
-        return this;
-      }
-      if (null != this.footerSigningKey) {
-        throw new IllegalArgumentException("Footer signing key already set");
-      }
-      this.footerSigningKey = footerSigningKey;
-      return this;
-    }
     
     /**
-     * Set the AES-GCM additional authenticated data (AAD) Prefix.
+     * Explicitly supply the AAD prefix.
+     * A must when a prefix is used for file encryption, but not stored in file.
+     * If AAD prefix is stored in file, the explicitly supplied value will be ignored.
      * @param aad
      */
     public Builder withAADPrefix(byte[] aadPrefixBytes) {
@@ -179,29 +156,14 @@ public class FileDecryptionProperties {
       return this;
     }
     
-    /**
-     * Set an AAD prefix retrieval callback.
-     * @param aadRetriever
-     */
-    public Builder withAADRetriever(AADPrefixRetriever aadPrefixRetriever) {
-      if (null == aadPrefixRetriever) {
-        return this;
-      }
-      if (null != this.aadPrefixRetriever) {
-        throw new IllegalArgumentException("AAD retriever already set");
-      }
-      this.aadPrefixRetriever = aadPrefixRetriever;
-      return this;
-    }
-    
     public FileDecryptionProperties build() {
-      return new FileDecryptionProperties(footerDecryptionKey, keyRetriever, footerSigningKey, 
-          checkPlaintextFooterIntegrity, aadPrefixRetriever, aadPrefixBytes, columnPropertyMap);
+      return new FileDecryptionProperties(footerKey, keyRetriever, 
+          checkPlaintextFooterIntegrity, aadPrefixBytes, columnPropertyMap);
     }
   }
   
-  public byte[] getFooterDecryptionKey() {
-    return footerDecryptionKey;
+  public byte[] getFooterKey() {
+    return footerKey;
   }
   
   public byte[] getColumnKey(ColumnPath path) {
@@ -216,18 +178,10 @@ public class FileDecryptionProperties {
   }
 
   public byte[] getAADPrefix() {
-    return aadPrefixBytes;
-  }
-
-  public AADPrefixRetriever getAADPrefixRetriever() {
-    return aadPrefixRetriever;
+    return aadPrefix;
   }
   
   public boolean checkFooterIntegrity() {
     return checkPlaintextFooterIntegrity;
-  }
-  
-  public byte[] getFooterSigningKey() {
-    return footerSigningKey;
   }
 }

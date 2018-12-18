@@ -49,9 +49,10 @@ public class AesEncryptor implements BlockCipher.Encryptor{
   public static final byte ColumnIndex = 6;
   public static final byte OffsetIndex = 7;
 
-  static final int NONCE_LENGTH = 12;
+  public static final int NONCE_LENGTH = 12;
+  public static final int GCM_TAG_LENGTH = 16;
+  
   static final int CTR_IV_LENGTH = 16;
-  static final int GCM_TAG_LENGTH = 16;
   static final int CHUNK_LENGTH = 4 * 1024;
   static final int INT_LENGTH = 4;
   static final int AAD_FILE_UNIQUE_LENGTH = 8;
@@ -62,7 +63,7 @@ public class AesEncryptor implements BlockCipher.Encryptor{
   private final Cipher aesCipher;
   private final Mode aesMode;
   private final byte[] ctrIV;
-  private final byte[] nonce;
+  private final byte[] localNonce;
 
 
   public AesEncryptor(Mode mode, byte[] keyBytes) throws IllegalArgumentException, IOException {
@@ -91,25 +92,32 @@ public class AesEncryptor implements BlockCipher.Encryptor{
       }
       ctrIV = new byte[CTR_IV_LENGTH];
       Arrays.fill(ctrIV, (byte) 0);
+      // Setting last bit of initial CTR counter to 1
       ctrIV[CTR_IV_LENGTH - 1] = (byte) 1;
     }
     
-    nonce = new byte[NONCE_LENGTH];
+    localNonce = new byte[NONCE_LENGTH];
   }
 
   @Override
   public byte[] encrypt(byte[] plainText, byte[] AAD)  throws IOException {
-    randomGenerator.nextBytes(nonce);
-    return encrypt(plainText, nonce, AAD);
+    return encrypt(true, plainText, AAD);
   }
   
-  public byte[] encrypt(byte[] plainText, byte[] nonce, byte[] AAD)  throws IOException {
+  public byte[] encrypt(boolean writeLength, byte[] plainText, byte[] AAD)  throws IOException {
+    randomGenerator.nextBytes(localNonce);
+    return encrypt(writeLength, plainText, localNonce, AAD);
+  }
+  
+  public byte[] encrypt(boolean writeLength, byte[] plainText, byte[] nonce, byte[] AAD)  throws IOException {
+    if (nonce.length != NONCE_LENGTH) throw new IOException("Wrong nonce length " + nonce.length);
     int plainTextLength = plainText.length;
     int cipherTextLength = NONCE_LENGTH + plainTextLength + tagLength;
-    byte[] cipherText = new byte[INT_LENGTH + cipherTextLength];
+    int lengthBufferLength = (writeLength? INT_LENGTH: 0);
+    byte[] cipherText = new byte[lengthBufferLength + cipherTextLength];
     int inputLength = plainTextLength;
     int inputOffset = 0;
-    int outputOffset = INT_LENGTH + NONCE_LENGTH;
+    int outputOffset = lengthBufferLength + NONCE_LENGTH;
     try {
       if (Mode.GCM == aesMode) {
         GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH * 8, nonce);
@@ -134,9 +142,9 @@ public class AesEncryptor implements BlockCipher.Encryptor{
       throw new IOException("Failed to encrypt", e);
     }
     // Add ciphertext length
-    System.arraycopy(BytesUtils.intToBytes(cipherTextLength), 0, cipherText, 0, INT_LENGTH);
+    if (writeLength) System.arraycopy(BytesUtils.intToBytes(cipherTextLength), 0, cipherText, 0, lengthBufferLength);
     // Add the nonce
-    System.arraycopy(nonce, 0, cipherText, INT_LENGTH, NONCE_LENGTH);
+    System.arraycopy(nonce, 0, cipherText, lengthBufferLength, NONCE_LENGTH);
 
     return cipherText;
   }
@@ -157,6 +165,10 @@ public class AesEncryptor implements BlockCipher.Encryptor{
     
     byte[] pageOrdinalBytes = shortToBytesLE(pageOrdinal);
     return concatByteArrays(aadPrefixBytes, typeOrdinalBytes, rowGroupOrdinalBytes, columnOrdinalBytes, pageOrdinalBytes);
+  }
+  
+  public static byte[] createFooterAAD(byte[] aadPrefixBytes) {
+    return createModuleAAD(aadPrefixBytes, Footer, (short) -1, (short) -1, (short) -1);
   }
   
   public static void quickUpdatePageAAD(byte[] pageAAD, short newPageOrdinal) {

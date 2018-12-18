@@ -31,15 +31,14 @@ public class InternalFileDecryptor {
   
   private final FileDecryptionProperties fileDecryptionProperties;
   private final DecryptionKeyRetriever keyRetriever;
-  private final AADPrefixRetriever aadPrefixRetriever;
   private final boolean checkPlaintextFooterIntegrity;
   
-  private byte[] footerDecryptionKey;
-  private byte[] footerSigningKey;
+  private byte[] footerKey;
   private HashMap<ColumnPath, InternalColumnDecryptionSetup> columnMap;
   private EncryptionAlgorithm algorithm;
-  private byte[] aadPrefixBytes;
+  private byte[] aadPrefix;
   private byte[] fileAAD;
+  private boolean encryptedFile;
   private boolean encryptedFooter;
   private boolean fileCryptoMetaDataProcessed = false;
   private boolean allColumnCryptoMetaDataProcessed = false;
@@ -49,18 +48,16 @@ public class InternalFileDecryptor {
   public InternalFileDecryptor(FileDecryptionProperties fileDecryptionProperties) throws IOException {
     this.fileDecryptionProperties= fileDecryptionProperties;
     checkPlaintextFooterIntegrity = fileDecryptionProperties.checkFooterIntegrity();
-    footerDecryptionKey = fileDecryptionProperties.getFooterDecryptionKey();
-    footerSigningKey = fileDecryptionProperties.getFooterSigningKey();
+    footerKey = fileDecryptionProperties.getFooterKey();
     keyRetriever = fileDecryptionProperties.getKeyRetriever();
-    aadPrefixBytes = fileDecryptionProperties.getAADPrefix();
-    aadPrefixRetriever = fileDecryptionProperties.getAADPrefixRetriever();
+    aadPrefix = fileDecryptionProperties.getAADPrefix();
     columnMap = new HashMap<ColumnPath, InternalColumnDecryptionSetup>();
   }
   
-  private BlockCipher.Decryptor getMetaDataDecryptor(byte[] columnKey) throws IOException {
+  private BlockCipher.Decryptor getThriftModuleDecryptor(byte[] columnKey) throws IOException {
     if (null == columnKey) { // Decryptor with footer key
       if (null == aesGcmDecryptorWithFooterKey) {
-        aesGcmDecryptorWithFooterKey = new AesDecryptor(AesEncryptor.Mode.GCM, footerDecryptionKey);
+        aesGcmDecryptorWithFooterKey = new AesDecryptor(AesEncryptor.Mode.GCM, footerKey);
       }
       return aesGcmDecryptorWithFooterKey;
     }
@@ -69,14 +66,14 @@ public class InternalFileDecryptor {
     }
   }
   
-  private BlockCipher.Decryptor getDataDecryptor(byte[] columnKey) throws IOException {
+  private BlockCipher.Decryptor getDataModuleDecryptor(byte[] columnKey) throws IOException {
     if (algorithm.isSetAES_GCM_V1()) {
-      return getMetaDataDecryptor(columnKey);
+      return getThriftModuleDecryptor(columnKey);
     }
     // AES_GCM_CTR_V1
     if (null == columnKey) { // Decryptor with footer key
       if (null == aesCtrDecryptorWithFooterKey) {
-        aesCtrDecryptorWithFooterKey = new AesDecryptor(AesEncryptor.Mode.CTR, footerDecryptionKey);
+        aesCtrDecryptorWithFooterKey = new AesDecryptor(AesEncryptor.Mode.CTR, footerKey);
       }
       return aesCtrDecryptorWithFooterKey;
     }
@@ -101,23 +98,42 @@ public class InternalFileDecryptor {
       throw new IOException("Haven't parsed the file crypto metadata yet");
     }
     if (!encryptedFooter) return null;
-    return getMetaDataDecryptor(null);
+    return getThriftModuleDecryptor(null);
   }
 
-  public void setFileCryptoMetaData(EncryptionAlgorithm algorithm, boolean encryptedFooter, byte[] footerKeyMetaData) throws IOException {
+  public void setFileCryptoMetaData(boolean encryptedFile, EncryptionAlgorithm algorithm, 
+      boolean encryptedFooter, byte[] footerKeyMetaData) throws IOException {
     // first use of the decryptor
     if (!fileCryptoMetaDataProcessed) {
+      this.encryptedFile = encryptedFile;
+      if (!encryptedFile) {
+        if (null != algorithm || encryptedFooter || null !=  footerKeyMetaData) {
+          throw new IOException("Setting crypto parameters on unencrypted file");
+        }
+        return;
+      }
       this.encryptedFooter = encryptedFooter;
       this.algorithm = algorithm;
-      byte[] aadMetadata = null;
       byte[] aadFileUnique;
       
       if (algorithm.isSetAES_GCM_V1()) {
-        aadMetadata = algorithm.getAES_GCM_V1().getAad_metadata();
+        if (algorithm.getAES_GCM_V1().isSetAad_prefix()) {
+          // Overrides explicit AAD prefix (if supplied). Compare? //TODO
+          aadPrefix = algorithm.getAES_GCM_V1().getAad_prefix();
+        }
+        if (algorithm.getAES_GCM_V1().isSupply_aad_prefix() && (null == aadPrefix)) {
+          throw new IOException("AAD prefix used for file encryption, but not stored in file and not supplied in decryption properties");
+        }
         aadFileUnique = algorithm.getAES_GCM_V1().getAad_file_unique();
       }
       else if (algorithm.isSetAES_GCM_CTR_V1()) {
-        aadMetadata = algorithm.getAES_GCM_CTR_V1().getAad_metadata();
+        if (algorithm.getAES_GCM_CTR_V1().isSetAad_prefix()) {
+          // Overrides explicit AAD prefix (if supplied). Compare? //TODO
+          aadPrefix = algorithm.getAES_GCM_CTR_V1().getAad_prefix();
+        }
+        if (algorithm.getAES_GCM_CTR_V1().isSupply_aad_prefix() && (null == aadPrefix)) {
+          throw new IOException("AAD prefix used for file encryption, but not stored in file and not supplied in decryption properties");
+        }
         aadFileUnique = algorithm.getAES_GCM_CTR_V1().getAad_file_unique();
       }
       else {
@@ -125,32 +141,33 @@ public class InternalFileDecryptor {
       }
  
       // ignore footer key metadata if footer key is explicitly set via API
-      if (encryptedFooter && (null == footerDecryptionKey)) { 
+      if (encryptedFooter && (null == footerKey)) { 
         if (null == footerKeyMetaData) throw new IOException("EncryptedFooter. No footer key or key metadata");
         if (null == keyRetriever) throw new IOException("EncryptedFooter. No footer key or key retriever");
-        footerDecryptionKey = keyRetriever.getKey(footerKeyMetaData);
-        if (null == footerDecryptionKey) {
+        footerKey = keyRetriever.getKey(footerKeyMetaData);
+        if (null == footerKey) {
           throw new IOException("Footer decryption key unavailable");
         }
       }
       
-      // ignore aad metadata if AAD_Prefix is explicitly set via API
-      if ((null == aadPrefixBytes) && (null != aadPrefixRetriever) && (null != aadMetadata)) {
-        aadPrefixBytes = aadPrefixRetriever.getAADPrefix(aadMetadata);
-      }
-      
-      if (null == aadPrefixBytes) {
+      if (null == aadPrefix) {
         this.fileAAD = aadFileUnique;
       }
       else {
-        this.fileAAD = AesEncryptor.concatByteArrays(aadPrefixBytes, aadFileUnique);
+        this.fileAAD = AesEncryptor.concatByteArrays(aadPrefix, aadFileUnique);
       }
       fileCryptoMetaDataProcessed = true;
     }
     // re-use of the decryptor. compare the crypto metadata.
     else {
+      if (encryptedFile != this.encryptedFile) {
+        throw new IOException("Decryptor re-use: Different file encryption");
+      }
       if (!this.algorithm.equals(algorithm)) {
         throw new IOException("Decryptor re-use: Different algorithm");
+      }
+      if (encryptedFooter != this.encryptedFooter) {
+        throw new IOException("Decryptor re-use: Different footer encryption");
       }
       // TODO check other fields?
     }
@@ -184,11 +201,11 @@ public class InternalFileDecryptor {
     }
     else {
       if (encryptedWithFooterKey) {
-        if (null == footerDecryptionKey) {
+        if (null == footerKey) {
           throw new IOException("Column " + path + " is encrypted with NULL footer key");
         }
         columnDecryptionSetup = new InternalColumnDecryptionSetup(path, true, true, true, 
-            getDataDecryptor(null), getMetaDataDecryptor(null), columnOrdinal);
+            getDataModuleDecryptor(null), getThriftModuleDecryptor(null), columnOrdinal);
       }
       else {
         // Column is encrypted with column-specific key
@@ -203,7 +220,7 @@ public class InternalFileDecryptor {
         }
         else { // Key is available
           columnDecryptionSetup = new InternalColumnDecryptionSetup(path, true, true, false, 
-              getDataDecryptor(columnKeyBytes), getMetaDataDecryptor(columnKeyBytes), columnOrdinal);
+              getDataModuleDecryptor(columnKeyBytes), getThriftModuleDecryptor(columnKeyBytes), columnOrdinal);
         }
       }
     }
@@ -219,16 +236,27 @@ public class InternalFileDecryptor {
     return this.fileAAD;
   }
   
-  public byte[] getFooterSigningKey(byte[] signingKeyMetadata) throws IOException  {
-    if (null != footerSigningKey) return footerSigningKey;
-    if ((null != keyRetriever) && (null != signingKeyMetadata)) {
-      footerSigningKey = keyRetriever.getKey(signingKeyMetadata);
+  public AesEncryptor getSignedFooterEncryptor(byte[] signingKeyMetadata) throws IOException  {
+    if (!fileCryptoMetaDataProcessed) {
+      throw new IOException("Haven't parsed the file crypto metadata yet");
     }
-    return footerSigningKey;
+    if (encryptedFooter) throw new IOException("Requesting signed footer encryptor in file with encrypted footer");
+    if ((null == footerKey) && ((null != keyRetriever) && (null != signingKeyMetadata))) {
+      footerKey = keyRetriever.getKey(signingKeyMetadata);
+    }
+    if (null == footerKey) return null;
+    return new AesEncryptor(AesEncryptor.Mode.GCM, footerKey);
   }
 
   public boolean checkFooterIntegrity() {
     return checkPlaintextFooterIntegrity;
+  }
+
+  public boolean isEncryptedFile() throws IOException {
+    if (!fileCryptoMetaDataProcessed) {
+      throw new IOException("Haven't parsed the file crypto metadata yet");
+    }
+    return encryptedFile;
   }
 }
 

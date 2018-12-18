@@ -40,6 +40,7 @@ import org.apache.parquet.crypto.InternalFileDecryptor;
 import org.apache.parquet.filter.UnboundRecordFilter;
 import org.apache.parquet.filter2.compat.FilterCompat;
 import org.apache.parquet.filter2.compat.FilterCompat.Filter;
+import org.apache.parquet.hadoop.ParquetReader.Builder;
 import org.apache.parquet.hadoop.api.ReadSupport;
 import org.apache.parquet.hadoop.util.HadoopInputFile;
 import org.apache.parquet.HadoopReadOptions;
@@ -55,9 +56,9 @@ public class ParquetReader<T> implements Closeable {
   private final ReadSupport<T> readSupport;
   private final Iterator<InputFile> filesIterator;
   private final ParquetReadOptions options;
-  
+
   private InternalParquetRecordReader<T> reader;
-  private InternalFileDecryptor fileDecryptor;
+  private InternalFileDecryptor fileDecryptor; // TODO unused?
   private FileDecryptionProperties fileDecryptionProperties;
 
   /**
@@ -277,6 +278,16 @@ public class ParquetReader<T> implements Closeable {
 
     public Builder<T> useRecordFilter() {
       optionsBuilder.useRecordFilter();
+      return this;
+    }
+
+    public Builder<T> useColumnIndexFilter(boolean useColumnIndexFilter) {
+      optionsBuilder.useColumnIndexFilter(useColumnIndexFilter);
+      return this;
+    }
+
+    public Builder<T> useColumnIndexFilter() {
+      optionsBuilder.useColumnIndexFilter();
       return this;
     }
 
