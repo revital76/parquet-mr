@@ -67,6 +67,7 @@ import org.apache.parquet.crypto.AesEncryptor;
 import org.apache.parquet.crypto.FileEncryptionProperties;
 import org.apache.parquet.crypto.InternalFileEncryptor;
 import org.apache.parquet.example.DummyRecordConverter;
+import org.apache.parquet.hadoop.ParquetFileWriter.Mode;
 import org.apache.parquet.hadoop.ParquetOutputFormat.JobSummaryLevel;
 import org.apache.parquet.hadoop.metadata.ColumnPath;
 import org.apache.parquet.format.BlockCipher;
@@ -287,24 +288,19 @@ public class ParquetFileWriter {
    * @throws IOException if the file can not be created
    */
   public ParquetFileWriter(OutputFile file, MessageType schema, Mode mode,
-                           long rowGroupSize, int maxPaddingSize, int columnIndexTruncateLength)
-      throws IOException {
+      long rowGroupSize, int maxPaddingSize, int columnIndexTruncateLength)
+          throws IOException {
     this(file, schema, mode, rowGroupSize, maxPaddingSize, columnIndexTruncateLength, (FileEncryptionProperties) null);
   }
   
   //TODO encr param javadoc
   public ParquetFileWriter(OutputFile file, MessageType schema, Mode mode,
-                           long rowGroupSize, int maxPaddingSize, int columnIndexTruncateLength, FileEncryptionProperties encryptionProperties)
+                           long rowGroupSize, int maxPaddingSize, int columnIndexTruncateLength,
+                           FileEncryptionProperties encryptionProperties)
       throws IOException {
     TypeUtil.checkValidWriteSchema(schema);
 
     this.schema = schema;
-    if (null != encryptionProperties) {
-      this.fileEncryptor = new InternalFileEncryptor(encryptionProperties);
-    }
-    else {
-      this.fileEncryptor = null;
-    }
 
     long blockSize = rowGroupSize;
     if (file.supportsBlockSize()) {
@@ -318,6 +314,13 @@ public class ParquetFileWriter {
       this.out = file.createOrOverwrite(blockSize);
     } else {
       this.out = file.create(blockSize);
+    }
+    
+    if (null != encryptionProperties) {
+      this.fileEncryptor = new InternalFileEncryptor(encryptionProperties);
+    }
+    else {
+      this.fileEncryptor = null;
     }
 
     this.encodingStatsBuilder = new EncodingStats.Builder();
@@ -434,7 +437,7 @@ public class ParquetFileWriter {
         compressedPageSize,
         dictionaryPage.getDictionarySize(),
         dictionaryPage.getEncoding(),
-        out, 
+        out,
         headerBlockEncryptor, 
         AAD);
     long headerSize = out.getPos() - currentChunkDictionaryPageOffset;
@@ -636,6 +639,7 @@ public class ParquetFileWriter {
       short rowGroupOrdinal, 
       short columnOrdinal,
       byte[] fileAAD) throws IOException {
+
     startColumn(descriptor, valueCount, compressionCodecName);
 
     state = state.write();
@@ -1061,18 +1065,19 @@ public class ParquetFileWriter {
   private static void serializeFooter(ParquetMetadata footer, PositionOutputStream out,
       InternalFileEncryptor fileEncryptor) throws IOException {
     
-    org.apache.parquet.format.FileMetaData parquetMetadata =
-        metadataConverter.toParquetMetadata(CURRENT_VERSION, footer, fileEncryptor);
-    
     // Unencrypted file
     if (null == fileEncryptor) {
       long footerIndex = out.getPos();
+      org.apache.parquet.format.FileMetaData parquetMetadata = metadataConverter.toParquetMetadata(CURRENT_VERSION, footer);
       writeFileMetaData(parquetMetadata, out);
       LOG.debug("{}: footer length = {}" , out.getPos(), (out.getPos() - footerIndex));
       BytesUtils.writeIntLittleEndian(out, (int) (out.getPos() - footerIndex));
       out.write(MAGIC);
       return;
     }
+    
+    org.apache.parquet.format.FileMetaData parquetMetadata =
+        metadataConverter.toParquetMetadata(CURRENT_VERSION, footer, fileEncryptor);
     
     // Encrypted file with plaintext footer 
     if (!fileEncryptor.isFooterEncrypted()) {

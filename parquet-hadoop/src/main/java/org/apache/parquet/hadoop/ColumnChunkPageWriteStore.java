@@ -314,7 +314,7 @@ class ColumnChunkPageWriteStore implements PageWriteStore {
     public long allocatedSize() {
       return buf.size();
     }
-
+    
     @Override
     public void writeDictionaryPage(DictionaryPage dictionaryPage) throws IOException {
       if (this.dictionaryPage != null) {

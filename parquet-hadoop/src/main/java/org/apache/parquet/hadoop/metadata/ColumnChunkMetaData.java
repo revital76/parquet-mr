@@ -18,6 +18,9 @@
  */
 package org.apache.parquet.hadoop.metadata;
 
+import static org.apache.parquet.column.Encoding.PLAIN_DICTIONARY;
+import static org.apache.parquet.column.Encoding.RLE_DICTIONARY;
+
 import java.util.Set;
 
 import org.apache.parquet.column.Encoding;
@@ -35,11 +38,11 @@ import org.apache.yetus.audience.InterfaceAudience.Private;
  * Column meta data for a block stored in the file footer and passed in the InputSplit
  */
 abstract public class ColumnChunkMetaData {
-
+  
   // Hidden is an encrypted column for which the reader doesn't have a key
   protected boolean hiddenColumn;
   protected ColumnPath path;
-  
+
   @Deprecated
   public static ColumnChunkMetaData get(
       ColumnPath path,
@@ -312,7 +315,15 @@ abstract public class ColumnChunkMetaData {
   }
   
   public boolean hasDictionaryPage() { 
-    return getDictionaryPageOffset() > 0;
+    EncodingStats stats = getEncodingStats();
+    if (stats != null) {
+      // ensure there is a dictionary page and that it is used to encode data pages
+      return stats.hasDictionaryPages() && stats.hasDictionaryEncodedPages();
+    }
+    
+    Set<Encoding> encodings = getEncodings();
+    return (encodings.contains(PLAIN_DICTIONARY) || encodings.contains(RLE_DICTIONARY));
+    //return getDictionaryPageOffset() > 0; // TODO rm
   }
 }
 
@@ -545,3 +556,4 @@ class HiddenColumnChunkMetaData extends ColumnChunkMetaData {
     throw new HiddenColumnException(path.toArray()); 
   }
 }
+

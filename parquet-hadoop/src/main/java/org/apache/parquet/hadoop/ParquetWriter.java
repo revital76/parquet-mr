@@ -250,8 +250,10 @@ public class ParquetWriter<T> implements Closeable {
             .withDictionaryPageSize(dictionaryPageSize)
             .withDictionaryEncoding(enableDictionary)
             .withWriterVersion(writerVersion)
-            .build(), (FileEncryptionProperties) null);
+            .build(),
+            (FileEncryptionProperties) null);
   }
+  
   
   @Deprecated
   public ParquetWriter(
@@ -305,6 +307,7 @@ public class ParquetWriter<T> implements Closeable {
         conf);
   }
 
+  
   ParquetWriter(
       OutputFile file,
       ParquetFileWriter.Mode mode,
@@ -383,10 +386,10 @@ public class ParquetWriter<T> implements Closeable {
   public abstract static class Builder<T, SELF extends Builder<T, SELF>> {
     private OutputFile file = null;
     private Path path = null;
+    private FileEncryptionProperties encryptionProperties = null;
     private Configuration conf = new Configuration();
     private ParquetFileWriter.Mode mode;
     private CompressionCodecName codecName = DEFAULT_COMPRESSION_CODEC_NAME;
-    private FileEncryptionProperties encryptionProperties;
     private int rowGroupSize = DEFAULT_BLOCK_SIZE;
     private int maxPaddingSize = MAX_PADDING_SIZE_DEFAULT;
     private boolean enableValidation = DEFAULT_IS_VALIDATING_ENABLED;

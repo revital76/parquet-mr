@@ -123,7 +123,7 @@ public class ParquetFileReader implements Closeable {
 
   private final ParquetMetadataConverter converter;
   
-  private InternalFileDecryptor fileDecryptor;
+  private InternalFileDecryptor fileDecryptor = null;
 
   /**
    * for files provided, check if there's a summary file.
@@ -537,20 +537,20 @@ public class ParquetFileReader implements Closeable {
       return readFooter(file, options, in, fileDecryptionProperties);
     }
   }
-
   
   private static final ParquetMetadata readFooter(InputFile file, ParquetReadOptions options, SeekableInputStream f, 
       FileDecryptionProperties fileDecryptionProperties) throws IOException {
     ParquetMetadataConverter converter = new ParquetMetadataConverter(options);
     return readFooter(file, options, f, converter, fileDecryptionProperties, (InternalFileDecryptor) null);
   }
-  
+
   private static final ParquetMetadata readFooter(InputFile file, ParquetReadOptions options, SeekableInputStream f, 
       ParquetMetadataConverter converter, FileDecryptionProperties fileDecryptionProperties, InternalFileDecryptor fileDecryptor) throws IOException {
+    
     long fileLen = file.getLength();
     String filePath = file.toString();
     LOG.debug("File length {}", fileLen);
-    
+
     int FOOTER_LENGTH_SIZE = 4;
     if (fileLen < MAGIC.length + FOOTER_LENGTH_SIZE + MAGIC.length) { // MAGIC + data + footer + footerIndex + MAGIC
       throw new RuntimeException(filePath + " is not a Parquet file (length is too low: " + fileLen + ")");
@@ -668,6 +668,7 @@ public class ParquetFileReader implements Closeable {
   public static ParquetFileReader open(InputFile file, ParquetReadOptions options, FileDecryptionProperties fileDecryptionProperties) throws IOException {
     return new ParquetFileReader(file, options, fileDecryptionProperties);
   }
+
 
   private final InputFile file;
   private final SeekableInputStream f;
@@ -793,7 +794,7 @@ public class ParquetFileReader implements Closeable {
   private static <T> List<T> listWithNulls(int size) {
     return Stream.generate(() -> (T) null).limit(size).collect(Collectors.toCollection(ArrayList<T>::new));
   }
-
+  
   public ParquetMetadata getFooter() {
     if (footer == null) {
       try {
@@ -1261,7 +1262,7 @@ public class ParquetFileReader implements Closeable {
       this.stream = ByteBufferInputStream.wrap(buffers);
       this.offsetIndex = offsetIndex;
     }
-    
+
     protected PageHeader readPageHeader() throws IOException {
       return readPageHeader((BlockCipher.Decryptor) null, (byte[]) null);
     }

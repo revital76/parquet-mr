@@ -110,7 +110,6 @@ import org.apache.parquet.internal.column.columnindex.ColumnIndexBuilder;
 import org.apache.parquet.internal.column.columnindex.OffsetIndexBuilder;
 import org.apache.parquet.internal.hadoop.metadata.IndexReference;
 import org.apache.parquet.io.ParquetDecodingException;
-import org.apache.parquet.io.PositionOutputStream;
 import org.apache.parquet.io.SeekableInputStream;
 import org.apache.parquet.schema.ColumnOrder.ColumnOrderName;
 import org.apache.parquet.schema.GroupType;
@@ -469,6 +468,7 @@ public class ParquetMetadataConverter {
 
   private void addRowGroup(ParquetMetadata parquetMetadata, List<RowGroup> rowGroups, BlockMetaData block,
       InternalFileEncryptor fileEncryptor) throws IOException {
+    
     //rowGroup.total_byte_size = ;
     List<ColumnChunkMetaData> columns = block.getColumns();
     List<ColumnChunk> parquetColumns = new ArrayList<ColumnChunk>();
@@ -495,7 +495,8 @@ public class ParquetMetadataConverter {
           columnMetaData.getTotalUncompressedSize(),
           columnMetaData.getTotalSize(),
           columnMetaData.getFirstDataPageOffset());
-      metaData.setDictionary_page_offset(columnMetaData.getDictionaryPageOffset());
+      metaData.dictionary_page_offset = columnMetaData.getDictionaryPageOffset();
+      //metaData.setDictionary_page_offset(columnMetaData.getDictionaryPageOffset());
       if (!columnMetaData.getStatistics().isEmpty()) {
         metaData.setStatistics(toParquetStatistics(columnMetaData.getStatistics()));
       }
@@ -530,7 +531,7 @@ public class ParquetMetadataConverter {
       if (writeCryptoMetadata) {
         columnChunk.setCrypto_metadata(columnSetup.getColumnCryptoMetaData());
       }
-
+      
 //      columnChunk.meta_data.index_page_offset = ;
 //      columnChunk.meta_data.key_value_metadata = ; // nothing yet
 
@@ -1203,15 +1204,12 @@ public class ParquetMetadataConverter {
   }
 
   static long getOffset(RowGroup rowGroup) {
-    long offset;
     if (rowGroup.isSetFile_offset()) {
-      offset = rowGroup.getFile_offset();
+      return rowGroup.getFile_offset();
     }
-    else {
-      offset = getOffset(rowGroup.getColumns().get(0));
-    }
-    return offset;
+    return getOffset(rowGroup.getColumns().get(0));
   }
+  
   // Visible for testing
   static long getOffset(ColumnChunk columnChunk) {
     ColumnMetaData md = columnChunk.getMeta_data();
@@ -1336,7 +1334,7 @@ public class ParquetMetadataConverter {
       }
     }
   }
-  
+
   public ParquetMetadata readParquetMetadata(final InputStream from, MetadataFilter filter) throws IOException {
     return readParquetMetadata(from, filter, (InternalFileDecryptor) null, false, 0, 0);
   }
@@ -1344,7 +1342,7 @@ public class ParquetMetadataConverter {
   public ParquetMetadata readParquetMetadata(final InputStream from, MetadataFilter filter,
       final InternalFileDecryptor fileDecryptor, final boolean encryptedFooter, 
       final long footerOffset, final int combinedFooterLength) throws IOException {
- 
+    
     final BlockCipher.Decryptor footerDecryptor = (encryptedFooter? fileDecryptor.getFooterDecryptor() : null);
     final byte[] encryptedFooterAAD = (encryptedFooter? AesEncryptor.createFooterAAD(fileDecryptor.getFileAAD()) : null);
     
@@ -1402,8 +1400,8 @@ public class ParquetMetadataConverter {
             throw new ParquetDecodingException("all column chunks of the same row group must be in the same file for now");
           }
           ColumnMetaData metaData = columnChunk.meta_data;
-          
           ColumnChunkMetaData column = null;
+          
           if (null != metaData) { // unencrypted, or successfully decrypted
             ColumnPath path = getPath(metaData);
             column = ColumnChunkMetaData.get(
@@ -1531,8 +1529,10 @@ public class ParquetMetadataConverter {
         OriginalType newOriginalType = (schemaElement.isSetLogicalType() && getLogicalTypeAnnotation(schemaElement.logicalType) != null) ?
            getLogicalTypeAnnotation(schemaElement.logicalType).toOriginalType() : null;
         if (!originalType.equals(newOriginalType)) {
-          LOG.warn("Converted type and logical type metadata mismatch (convertedType: {}, logical type: {}). Using value in converted type.",
-            schemaElement.converted_type, schemaElement.logicalType);
+          if (newOriginalType != null) {
+            LOG.warn("Converted type and logical type metadata mismatch (convertedType: {}, logical type: {}). Using value in converted type.",
+              schemaElement.converted_type, schemaElement.logicalType);
+          }
           childBuilder.as(originalType);
         }
       }
@@ -1661,7 +1661,8 @@ public class ParquetMetadataConverter {
                                       valuesEncoding), 
                     to, blockEncryptor, AAD);
   }
-
+  
+  
   public void writeDataPageV2Header(
       int uncompressedSize, int compressedSize,
       int valueCount, int nullCount, int rowCount,
@@ -1703,7 +1704,7 @@ public class ParquetMetadataConverter {
     pageHeader.setData_page_header_v2(dataPageHeaderV2);
     return pageHeader;
   }
-
+  
   public void writeDictionaryPageHeader(
       int uncompressedSize, int compressedSize, int valueCount,
       org.apache.parquet.column.Encoding valuesEncoding, OutputStream to) throws IOException {

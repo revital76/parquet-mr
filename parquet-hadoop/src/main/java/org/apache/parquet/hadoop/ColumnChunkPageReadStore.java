@@ -41,7 +41,6 @@ import org.apache.parquet.compression.CompressionCodecFactory.BytesInputDecompre
 import org.apache.parquet.crypto.AesEncryptor;
 import org.apache.parquet.crypto.HiddenColumnException;
 import org.apache.parquet.format.BlockCipher;
-import org.apache.parquet.hadoop.ColumnChunkPageReadStore.ColumnChunkPageReader;
 import org.apache.parquet.internal.column.columnindex.OffsetIndex;
 import org.apache.parquet.internal.filter2.columnindex.RowRanges;
 import org.apache.parquet.io.ParquetDecodingException;
@@ -74,22 +73,21 @@ class ColumnChunkPageReadStore implements PageReadStore, DictionaryPageReadStore
     private final OffsetIndex offsetIndex;
     private final long rowCount;
     private int pageIndex = 0;
+    
     private final BlockCipher.Decryptor blockDecryptor;
-    private final byte[] aadPrefix;
     private final boolean hiddenColumn;
     private final String[] columnPath;
     
     private short pageOrdinal; // TODO replace ordinal with pageIndex
     private byte[] dataPageAAD;
     private byte[] dictionaryPageAAD;
-
+    
     ColumnChunkPageReader(BytesInputDecompressor decompressor, List<DataPage> compressedPages,
         DictionaryPage compressedDictionaryPage, OffsetIndex offsetIndex, long rowCount,
-        String[] columnPath, BlockCipher.Decryptor blockDecryptor, byte[] aadPrefix, 
+        String[] columnPath, BlockCipher.Decryptor blockDecryptor, byte[] fileAAD, 
         short rowGroupOrdinal, short columnOrdinal) {
       this.decompressor = decompressor;
       this.blockDecryptor = blockDecryptor;
-      this.aadPrefix = aadPrefix;
       this.compressedPages = new LinkedList<DataPage>(compressedPages);
       this.compressedDictionaryPage = compressedDictionaryPage;
       long count = 0;
@@ -104,8 +102,8 @@ class ColumnChunkPageReadStore implements PageReadStore, DictionaryPageReadStore
       this.columnPath = columnPath;
       this.pageOrdinal = -1;
       if (null != blockDecryptor) {
-        dataPageAAD = AesEncryptor.createModuleAAD(aadPrefix, AesEncryptor.DataPage, rowGroupOrdinal, columnOrdinal, pageOrdinal);
-        dictionaryPageAAD = AesEncryptor.createModuleAAD(aadPrefix, AesEncryptor.DictionaryPage, rowGroupOrdinal, columnOrdinal, (short) -1);
+        dataPageAAD = AesEncryptor.createModuleAAD(fileAAD, AesEncryptor.DataPage, rowGroupOrdinal, columnOrdinal, pageOrdinal);
+        dictionaryPageAAD = AesEncryptor.createModuleAAD(fileAAD, AesEncryptor.DictionaryPage, rowGroupOrdinal, columnOrdinal, (short) -1);
       } 
     }
     
@@ -113,7 +111,6 @@ class ColumnChunkPageReadStore implements PageReadStore, DictionaryPageReadStore
     ColumnChunkPageReader(String[] columnPath) {
       this.decompressor = null;
       this.blockDecryptor = null;
-      this.aadPrefix = null;
       this.compressedPages = null;
       this.compressedDictionaryPage = null;
       this.valueCount = -1;
@@ -181,10 +178,37 @@ class ColumnChunkPageReadStore implements PageReadStore, DictionaryPageReadStore
         @Override
         public DataPage visit(DataPageV2 dataPageV2) {
           if (!dataPageV2.isCompressed()) {
-            // TODO if (null != blockDecryptor) { decrypt
             if (offsetIndex == null) {
-              return dataPageV2;
+              if (null == blockDecryptor) {
+                return dataPageV2;
+              }
+              else {
+                BytesInput bytes = dataPageV2.getData();
+                BytesInput decrypted;
+                try {
+                  decrypted = BytesInput.from(blockDecryptor.decrypt(bytes.toByteArray(), dataPageAAD));
+                } catch (IOException e) {
+                  throw new ParquetDecodingException("could not decrypt page", e);
+                }
+                return DataPageV2.uncompressed(
+                    dataPageV2.getRowCount(),
+                    dataPageV2.getNullCount(),
+                    dataPageV2.getValueCount(),
+                    dataPageV2.getRepetitionLevels(),
+                    dataPageV2.getDefinitionLevels(),
+                    dataPageV2.getDataEncoding(),
+                    decrypted,
+                    dataPageV2.getStatistics());
+              }
             } else {
+              BytesInput bytes = dataPageV2.getData();
+              if (null != blockDecryptor) {
+                try {
+                  bytes = BytesInput.from(blockDecryptor.decrypt(bytes.toByteArray(), dataPageAAD));
+                } catch (IOException e) {
+                  throw new ParquetDecodingException("could not decrypt page", e);
+                }
+              }
               return DataPageV2.uncompressed(
                   dataPageV2.getRowCount(),
                   dataPageV2.getNullCount(),
@@ -193,7 +217,7 @@ class ColumnChunkPageReadStore implements PageReadStore, DictionaryPageReadStore
                   dataPageV2.getRepetitionLevels(),
                   dataPageV2.getDefinitionLevels(),
                   dataPageV2.getDataEncoding(),
-                  dataPageV2.getData(),
+                  bytes,
                   dataPageV2.getStatistics());
             }
           }
@@ -303,5 +327,4 @@ class ColumnChunkPageReadStore implements PageReadStore, DictionaryPageReadStore
   void addHiddenColumn(ColumnDescriptor path) {
     addColumn(path, new ColumnChunkPageReader(path.getPath()));
   }
-
 }

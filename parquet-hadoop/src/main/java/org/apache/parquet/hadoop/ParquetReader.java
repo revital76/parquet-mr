@@ -58,7 +58,6 @@ public class ParquetReader<T> implements Closeable {
   private final ParquetReadOptions options;
 
   private InternalParquetRecordReader<T> reader;
-  private InternalFileDecryptor fileDecryptor; // TODO unused?
   private FileDecryptionProperties fileDecryptionProperties;
 
   /**
@@ -129,7 +128,6 @@ public class ParquetReader<T> implements Closeable {
     this.filesIterator = files.iterator();
     if (null != fileDecryptionProperties) {
       this.fileDecryptionProperties = fileDecryptionProperties;
-      fileDecryptor = new InternalFileDecryptor(fileDecryptionProperties);
     }
   }
 
