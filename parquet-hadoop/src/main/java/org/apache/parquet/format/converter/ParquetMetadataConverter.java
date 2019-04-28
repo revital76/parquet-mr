@@ -1233,8 +1233,11 @@ public class ParquetMetadataConverter {
     
     if (!encryptedFooter && !fileMetaData.isSetEncryption_algorithm()) { // Plaintext file
       if (null != fileDecryptor) {
+        fileDecryptor.setPlaintextFile();
         // Done to detect files that were not encrypted by mistake
-        throw new IOException("Applying decryptor on plaintext file");
+        if (!fileDecryptor.plaintextFilesAllowed()) {
+          throw new IOException("Applying decryptor on plaintext file");
+        }
       }
       return; 
     }
