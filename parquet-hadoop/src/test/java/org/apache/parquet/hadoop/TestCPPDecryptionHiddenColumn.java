@@ -59,7 +59,7 @@ public class TestCPPDecryptionHiddenColumn {
   @Test
   public void test() throws Exception {
     Configuration conf = new Configuration();
-    Path file = new Path("/home/eres//parquet_java.parquet.encrypted");
+    Path file = new Path("/home/eres/parquet-encryption/cpp/test-parquet-files/4.parquet.encrypted");
 
     byte[] FOOTER_ENCRYPTION_KEY = new String("0123456789012345").getBytes();
     byte[] COLUMN_ENCRYPTION_KEY1 = new String("1234567890123450").getBytes();

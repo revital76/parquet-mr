@@ -61,7 +61,7 @@ public class TestCPPEncryption {
     kr.putKey("kc1", COLUMN_ENCRYPTION_KEY1);
     kr.putKey("kc2", COLUMN_ENCRYPTION_KEY2);
 
-    Path file = new Path("/home/eres/parquet-encryption/cpp/arrow_repo/build/parquet_cpp_example.parquet.encrypted");
+    Path file = new Path("/home/eres/parquet-encryption/cpp/test-parquet-files/1.parquet.encrypted");
     FileDecryptionProperties decryptionProperties = FileDecryptionProperties.builder()
       .withKeyRetriever(kr)
       .build();
