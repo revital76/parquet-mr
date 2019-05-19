@@ -68,12 +68,12 @@ public class InternalFileDecryptor {
   private BlockCipher.Decryptor getThriftModuleDecryptor(byte[] columnKey) throws IOException {
     if (null == columnKey) { // Decryptor with footer key
       if (null == aesGcmDecryptorWithFooterKey) {
-        aesGcmDecryptorWithFooterKey = new AesDecryptor(AesEncryptor.Mode.GCM, footerKey);
+        aesGcmDecryptorWithFooterKey = new AesDecryptor(AesEncryptor.Mode.GCM, footerKey, allDecryptors);
       }
       return aesGcmDecryptorWithFooterKey;
     }
     else { // Decryptor with column key
-      return new AesDecryptor(AesEncryptor.Mode.GCM, columnKey);
+      return new AesDecryptor(AesEncryptor.Mode.GCM, columnKey, allDecryptors);
     }
   }
   
@@ -84,12 +84,12 @@ public class InternalFileDecryptor {
     // AES_GCM_CTR_V1
     if (null == columnKey) { // Decryptor with footer key
       if (null == aesCtrDecryptorWithFooterKey) {
-        aesCtrDecryptorWithFooterKey = new AesDecryptor(AesEncryptor.Mode.CTR, footerKey);
+        aesCtrDecryptorWithFooterKey = new AesDecryptor(AesEncryptor.Mode.CTR, footerKey, allDecryptors);
       }
       return aesCtrDecryptorWithFooterKey;
     }
     else { // Decryptor with column key
-      return new AesDecryptor(AesEncryptor.Mode.CTR, columnKey);
+      return new AesDecryptor(AesEncryptor.Mode.CTR, columnKey, allDecryptors);
     }
   }
 

@@ -81,7 +81,8 @@ public class WrappedKeyManager {
           throw new IOException("Failed to get from KMS the master key " + masterKeyID);
         }
         byte[] masterKey = Base64.getDecoder().decode(encodedMasterKey);
-        AesDecryptor keyDecryptor = new AesDecryptor(AesEncryptor.Mode.GCM, masterKey);
+        // TODO key wiping
+        AesDecryptor keyDecryptor = new AesDecryptor(AesEncryptor.Mode.GCM, masterKey, null);
         byte[] AAD = masterKeyID.getBytes(StandardCharsets.UTF_8);
         dataKey = keyDecryptor.decrypt(wrappedDataKey, 0, wrappedDataKey.length, AAD);
       }

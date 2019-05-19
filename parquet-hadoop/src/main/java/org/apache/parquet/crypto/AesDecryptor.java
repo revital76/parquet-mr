@@ -39,6 +39,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
+import java.util.LinkedList;
 
 
 public class AesDecryptor implements BlockCipher.Decryptor{
@@ -57,7 +58,7 @@ public class AesDecryptor implements BlockCipher.Decryptor{
    * @throws IllegalArgumentException
    * @throws IOException
    */
-  public AesDecryptor(Mode mode, byte[] keyBytes) throws IllegalArgumentException, IOException {
+  public AesDecryptor(Mode mode, byte[] keyBytes, LinkedList<AesDecryptor> allDecryptors) throws IllegalArgumentException, IOException {
     if (null == keyBytes) {
       throw new IllegalArgumentException("Null key bytes");
     }
@@ -85,6 +86,7 @@ public class AesDecryptor implements BlockCipher.Decryptor{
     }
     
     nonce = new byte[NONCE_LENGTH];
+    if (null != allDecryptors) allDecryptors.add(this);
   }
 
   @Override
