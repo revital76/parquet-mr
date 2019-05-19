@@ -44,9 +44,9 @@ import java.util.Arrays;
 public class AesDecryptor implements BlockCipher.Decryptor{
 
   private final Mode aesMode;
-  private final SecretKey aesKey;
+  private SecretKey aesKey;
   private final int tagLength;
-  private final Cipher aesCipher;
+  private Cipher aesCipher;
   private final byte[] ctrIV;
   private final byte[] nonce;
 
@@ -180,6 +180,12 @@ public class AesDecryptor implements BlockCipher.Decryptor{
     }
     // Decrypt the structure contents
    return decrypt(ciphertextBuffer, 0, ciphertextLength, AAD);
+  }
+  
+  void wipeOut() {
+    // dereference for GC
+    aesKey = null; // TODO replace with destroy. Doesn't work in Java (bug)
+    aesCipher = null;
   }
 }
 

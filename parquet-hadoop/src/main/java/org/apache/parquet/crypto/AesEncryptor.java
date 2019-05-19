@@ -21,7 +21,6 @@ package org.apache.parquet.crypto;
 
 
 import javax.crypto.Cipher;
-import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -33,6 +32,7 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.Arrays;
+import java.util.LinkedList;
 
 public class AesEncryptor implements BlockCipher.Encryptor{
 
@@ -58,10 +58,10 @@ public class AesEncryptor implements BlockCipher.Encryptor{
   static final int CHUNK_LENGTH = 4 * 1024;
   static final int AAD_FILE_UNIQUE_LENGTH = 8;
 
-  private final SecretKey aesKey;
+  private SecretKeySpec aesKey;
   private final SecureRandom randomGenerator;
   private final int tagLength;
-  private final Cipher aesCipher;
+  private Cipher aesCipher;
   private final Mode aesMode;
   private final byte[] ctrIV;
   private final byte[] localNonce;
@@ -70,14 +70,16 @@ public class AesEncryptor implements BlockCipher.Encryptor{
    * 
    * @param mode GCM or CTR
    * @param keyBytes encryption key
+   * @param allEncryptors 
    * @throws IllegalArgumentException
    * @throws IOException
    */
-  public AesEncryptor(Mode mode, byte[] keyBytes) throws IllegalArgumentException, IOException {
+  public AesEncryptor(Mode mode, byte[] keyBytes, LinkedList<AesEncryptor> allEncryptors) throws IllegalArgumentException, IOException {
     if (null == keyBytes) {
       throw new IllegalArgumentException("Null key bytes");
     }
     aesKey = new SecretKeySpec(keyBytes, "AES");
+    
     randomGenerator = new SecureRandom();
     aesMode = mode;
     
@@ -104,6 +106,7 @@ public class AesEncryptor implements BlockCipher.Encryptor{
     }
     
     localNonce = new byte[NONCE_LENGTH];
+    if (null != allEncryptors) allEncryptors.add(this);
   }
 
   @Override
@@ -227,6 +230,12 @@ public class AesEncryptor implements BlockCipher.Encryptor{
     output[1] = (byte)(0xff & (input >> 8));
     output[0] = (byte)(0xff & (input));
     return output;
+  }
+
+  public void wipeOut() {
+    // dereference for GC
+    aesKey = null; // TODO replace with destroy. Doesn't work in Java (bug)
+    aesCipher = null;
   }
 }
 

@@ -1266,6 +1266,7 @@ public class ParquetMetadataConverter {
 
         byte[] signedFooterAAD = AesEncryptor.createFooterAAD(fileDecryptor.getFileAAD());
         byte[] encryptedFooterBytes = footerSigner.encrypt(false, serializedFooter, nonce, signedFooterAAD);
+        footerSigner.wipeOut();
         byte[] calculatedTag = new byte[AesEncryptor.GCM_TAG_LENGTH];
         System.arraycopy(encryptedFooterBytes, encryptedFooterBytes.length - AesEncryptor.GCM_TAG_LENGTH, 
             calculatedTag, 0, AesEncryptor.GCM_TAG_LENGTH);

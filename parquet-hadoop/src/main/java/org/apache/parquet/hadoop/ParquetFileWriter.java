@@ -1018,6 +1018,9 @@ public class ParquetFileWriter {
     LOG.debug("{}: end", out.getPos());
     this.footer = new ParquetMetadata(new FileMetaData(schema, extraMetaData, Version.FULL_VERSION), blocks);
     serializeFooter(footer, out, fileEncryptor);
+    if (null != fileEncryptor) {
+      fileEncryptor.wipeOutEncryptionKeys();
+    }
     out.close();
   }
 

@@ -144,7 +144,8 @@ public class WrappedKeyManager {
         throw new IOException("KMS client doesnt support key fetching", e);
       }
       byte[] masterKey = Base64.getDecoder().decode(encodedMasterKey);
-      AesEncryptor keyEncryptor = new AesEncryptor(AesEncryptor.Mode.GCM, masterKey);
+      // TODO key wiping
+      AesEncryptor keyEncryptor = new AesEncryptor(AesEncryptor.Mode.GCM, masterKey, null);
       byte[] AAD = masterKeyID.getBytes(StandardCharsets.UTF_8);
       byte[] wrappedDataKey = keyEncryptor.encrypt(false, dataKey, AAD);
       encodedWrappedDataKey = Base64.getEncoder().encodeToString(wrappedDataKey);

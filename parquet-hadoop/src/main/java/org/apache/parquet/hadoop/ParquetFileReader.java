@@ -1256,6 +1256,9 @@ public class ParquetFileReader implements Closeable {
 
   @Override
   public void close() throws IOException {
+    if (null != fileDecryptor) {
+      fileDecryptor.wipeOutDecryptionKeys();
+    }
     try {
       if (f != null) {
         f.close();
