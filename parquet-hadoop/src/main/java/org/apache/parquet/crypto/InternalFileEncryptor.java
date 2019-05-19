@@ -33,10 +33,8 @@ public class InternalFileEncryptor {
 
   private final EncryptionAlgorithm algorithm;
   private final FileEncryptionProperties fileEncryptionProperties;
-  private final byte[] footerEncryptionKey;
-  private final byte[] footerEncryptionKeyMetadata;
-  private final byte[] footerSigningKey;
-  private final byte[] footerSigningKeyMetadata;
+  private final byte[] footerKey;
+  private final byte[] footerKeyMetadata;
   private final HashMap<ColumnPath, InternalColumnEncryptionSetup> columnMap;
   private final byte[] fileAAD;
   private final boolean encryptFooter;
@@ -47,11 +45,9 @@ public class InternalFileEncryptor {
 
   public InternalFileEncryptor(FileEncryptionProperties fileEncryptionProperties) {
     algorithm = fileEncryptionProperties.getAlgorithm();
-    footerEncryptionKey = fileEncryptionProperties.getFooterEncryptionKey();
+    footerKey = fileEncryptionProperties.getFooterKey();
     encryptFooter =  fileEncryptionProperties.encryptedFooter();
-    footerEncryptionKeyMetadata = fileEncryptionProperties.getFooterEncryptionKeyMetadata();
-    footerSigningKey = fileEncryptionProperties.getFooterSigningKey();
-    footerSigningKeyMetadata = fileEncryptionProperties.getFooterSigningKeyMetadata();
+    footerKeyMetadata = fileEncryptionProperties.getFooterKeyMetadata();
     fileAAD = fileEncryptionProperties.getFileAAD();
     this.fileEncryptionProperties = fileEncryptionProperties;
     columnMap = new HashMap<ColumnPath, InternalColumnEncryptionSetup>();
@@ -62,7 +58,7 @@ public class InternalFileEncryptor {
   private BlockCipher.Encryptor getThriftModuleEncryptor(byte[] columnKey) throws IOException {
     if (null == columnKey) { // Encryptor with footer key
       if (null == aesGcmEncryptorWithFooterKey) {
-        aesGcmEncryptorWithFooterKey = new AesEncryptor(AesEncryptor.Mode.GCM, footerEncryptionKey);
+        aesGcmEncryptorWithFooterKey = new AesEncryptor(AesEncryptor.Mode.GCM, footerKey);
       }
       return aesGcmEncryptorWithFooterKey;
     }
@@ -78,7 +74,7 @@ public class InternalFileEncryptor {
     // AES_GCM_CTR_V1
     if (null == columnKey) { // Encryptor with footer key
       if (null == aesCtrEncryptorWithFooterKey) {
-        aesCtrEncryptorWithFooterKey = new AesEncryptor(AesEncryptor.Mode.CTR, footerEncryptionKey);
+        aesCtrEncryptorWithFooterKey = new AesEncryptor(AesEncryptor.Mode.CTR, footerKey);
       }
       return aesCtrEncryptorWithFooterKey;
     }
@@ -139,7 +135,7 @@ public class InternalFileEncryptor {
   public FileCryptoMetaData getFileCryptoMetaData() throws IOException {
     if (!encryptFooter) throw new IOException("Requesting FileCryptoMetaData in file with unencrypted footer");
     FileCryptoMetaData fileCryptoMetaData = new FileCryptoMetaData(algorithm);
-    if (null != footerEncryptionKeyMetadata) fileCryptoMetaData.setKey_metadata(footerEncryptionKeyMetadata);
+    if (null != footerKeyMetadata) fileCryptoMetaData.setKey_metadata(footerKeyMetadata);
     fileCryptoMetaDataCreated = true;
     return fileCryptoMetaData;
   }
@@ -167,12 +163,12 @@ public class InternalFileEncryptor {
 
   public byte[] getFooterSigningKeyMetaData()  throws IOException {
     if (encryptFooter) throw new IOException("Requesting signing footer key metadata in file with encrypted footer");
-    return footerSigningKeyMetadata;
+    return footerKeyMetadata;
   }
 
 
   public BlockCipher.Encryptor getSignedFooterEncryptor() throws IOException  {
     if (encryptFooter) throw new IOException("Requesting signed footer encryptor in file with encrypted footer");
-    return new AesEncryptor(AesEncryptor.Mode.GCM, footerSigningKey);
+    return new AesEncryptor(AesEncryptor.Mode.GCM, footerKey);
   }
 }

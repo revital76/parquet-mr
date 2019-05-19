@@ -30,7 +30,7 @@ import static org.apache.parquet.crypto.AesEncryptor.NONCE_LENGTH;
 import static org.apache.parquet.crypto.AesEncryptor.GCM_TAG_LENGTH;
 import static org.apache.parquet.crypto.AesEncryptor.CTR_IV_LENGTH;
 import static org.apache.parquet.crypto.AesEncryptor.CHUNK_LENGTH; 
-import static org.apache.parquet.crypto.AesEncryptor.INT_LENGTH;
+import static org.apache.parquet.crypto.AesEncryptor.SIZE_LENGTH;
 
 import org.apache.parquet.crypto.AesEncryptor.Mode;
 import org.apache.parquet.format.BlockCipher;
@@ -89,8 +89,8 @@ public class AesDecryptor implements BlockCipher.Decryptor{
 
   @Override
   public byte[] decrypt(byte[] lengthAndCiphertext, byte[] AAD)  throws IOException {
-    int cipherTextOffset = INT_LENGTH;
-    int cipherTextLength = lengthAndCiphertext.length - INT_LENGTH;
+    int cipherTextOffset = SIZE_LENGTH;
+    int cipherTextLength = lengthAndCiphertext.length - SIZE_LENGTH;
     return decrypt(lengthAndCiphertext, cipherTextOffset, cipherTextLength, AAD);
   }
   
@@ -149,12 +149,12 @@ public class AesDecryptor implements BlockCipher.Decryptor{
 
   @Override
   public byte[] decryptInputStream(InputStream from, byte[] AAD) throws IOException {
-    byte[] lengthBuffer = new byte[INT_LENGTH];
+    byte[] lengthBuffer = new byte[SIZE_LENGTH];
     int gotBytes = 0;
     
     // Read the length of encrypted Thrift structure
-    while (gotBytes < INT_LENGTH) {
-      int n = from.read(lengthBuffer, gotBytes, INT_LENGTH - gotBytes);
+    while (gotBytes < SIZE_LENGTH) {
+      int n = from.read(lengthBuffer, gotBytes, SIZE_LENGTH - gotBytes);
       if (n <= 0) {
         throw new IOException("Tried to read int (4 bytes), but only got " + gotBytes + " bytes.");
       }

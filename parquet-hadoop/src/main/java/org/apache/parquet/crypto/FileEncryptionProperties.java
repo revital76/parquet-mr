@@ -196,6 +196,9 @@ public class FileEncryptionProperties {
      * If not called, and if AAD Prefix is set, it will be stored.
      */
     public Builder withoutAADPrefixStorage() {
+      if (null == this.aadPrefix) {
+        throw new IllegalArgumentException("AAD Prefix not yet set");
+      }
       this.storeAadPrefixInFile = false;
       return this;
     }
@@ -231,20 +234,12 @@ public class FileEncryptionProperties {
     return algorithm;
   }
 
-  public byte[] getFooterEncryptionKey() {
-    return (encryptedFooter? footerKey : null);
+  public byte[] getFooterKey() {
+    return footerKey;
   }
 
-  public byte[] getFooterEncryptionKeyMetadata() {
-    return (encryptedFooter? footerKeyMetadata : null);
-  }
-  
-  public byte[] getFooterSigningKey() {
-    return (encryptedFooter? null: footerKey);
-  }
-
-  public byte[] getFooterSigningKeyMetadata() {
-    return (encryptedFooter? null : footerKeyMetadata);
+  public byte[] getFooterKeyMetadata() {
+    return footerKeyMetadata;
   }
 
   public ColumnEncryptionProperties getColumnProperties(ColumnPath columnPath) {

@@ -52,10 +52,10 @@ public class AesEncryptor implements BlockCipher.Encryptor{
 
   public static final int NONCE_LENGTH = 12;
   public static final int GCM_TAG_LENGTH = 16;
+  public static final int SIZE_LENGTH = 4;
   
   static final int CTR_IV_LENGTH = 16;
   static final int CHUNK_LENGTH = 4 * 1024;
-  static final int INT_LENGTH = 4;
   static final int AAD_FILE_UNIQUE_LENGTH = 8;
 
   private final SecretKey aesKey;
@@ -137,7 +137,7 @@ public class AesEncryptor implements BlockCipher.Encryptor{
     if (nonce.length != NONCE_LENGTH) throw new IOException("Wrong nonce length " + nonce.length);
     int plainTextLength = plainText.length;
     int cipherTextLength = NONCE_LENGTH + plainTextLength + tagLength;
-    int lengthBufferLength = (writeLength? INT_LENGTH: 0);
+    int lengthBufferLength = (writeLength? SIZE_LENGTH: 0);
     byte[] cipherText = new byte[lengthBufferLength + cipherTextLength];
     int inputLength = plainTextLength;
     int inputOffset = 0;

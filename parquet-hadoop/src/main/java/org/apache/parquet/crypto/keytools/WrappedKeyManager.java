@@ -128,7 +128,7 @@ public class WrappedKeyManager {
    * @return
    * @throws IOException
    */
-  public ParquetKey generateKey(String masterKeyID) throws IOException {
+  public ParquetKey generateDataKey(String masterKeyID) throws IOException {
     byte[] dataKey = new byte[16]; //TODO
     random.nextBytes(dataKey);
     String encodedWrappedDataKey = null;
@@ -176,7 +176,7 @@ public class WrappedKeyManager {
     return key;
   }
 
-  public DecryptionKeyRetriever getKeyRetriever() {
+  public DecryptionKeyRetriever getDecryptionKeyRetriever() {
     return new WrappedKeyRetriever(kmsClient, wrapLocally, wrappedKeyStore, fileID);
   }
 }

@@ -1109,6 +1109,7 @@ public class ParquetFileWriter {
     if (!fileEncryptor.isFooterEncrypted()) {
       long footerIndex = out.getPos();
       parquetMetadata.setEncryption_algorithm(fileEncryptor.getEncryptionAlgorithm());
+      // create footer signature (nonce + tag of encrypted footer)
       byte[] footerSigningKeyMetaData = fileEncryptor.getFooterSigningKeyMetaData();
       if (null != footerSigningKeyMetaData) {
         parquetMetadata.setFooter_signing_key_metadata(footerSigningKeyMetaData);
@@ -1118,9 +1119,10 @@ public class ParquetFileWriter {
       byte[] serializedFooter = tempOutStream.toByteArray();
       byte[] footerAAD = AesEncryptor.createFooterAAD(fileEncryptor.getFileAAD());
       byte[] encryptedFooter = fileEncryptor.getSignedFooterEncryptor().encrypt(serializedFooter, footerAAD);
-      byte[] signature = new byte[28]; // TODO
-      System.arraycopy(encryptedFooter, 4, signature, 0, 12); // copy Nonce TODO
-      System.arraycopy(encryptedFooter, encryptedFooter.length-16, signature, 12, 16); // copy GCM Tag TODO
+      byte[] signature = new byte[AesEncryptor.NONCE_LENGTH + AesEncryptor.GCM_TAG_LENGTH];
+      System.arraycopy(encryptedFooter, AesEncryptor.SIZE_LENGTH, signature, 0, AesEncryptor.NONCE_LENGTH); // copy Nonce
+      System.arraycopy(encryptedFooter, encryptedFooter.length - AesEncryptor.GCM_TAG_LENGTH, 
+          signature, AesEncryptor.NONCE_LENGTH, AesEncryptor.GCM_TAG_LENGTH); // copy GCM Tag
       out.write(serializedFooter);
       out.write(signature);
       BytesUtils.writeIntLittleEndian(out, (int) (out.getPos() - footerIndex));
