@@ -50,6 +50,7 @@ public class InternalFileDecryptor {
   private LinkedList<AesDecryptor> allDecryptors;
 
   public InternalFileDecryptor(FileDecryptionProperties fileDecryptionProperties) throws IOException {
+    
     if (fileDecryptionProperties.isUtilized()) {
       throw new IOException("Re-using decryption properties with explicit keys for another file");
     }

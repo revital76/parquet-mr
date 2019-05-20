@@ -129,7 +129,7 @@ public class WrappedKeyManager {
    * @return
    * @throws IOException
    */
-  public ParquetKey generateDataKey(String masterKeyID) throws IOException {
+  public KeyWithMetadata generateDataKey(String masterKeyID) throws IOException {
     byte[] dataKey = new byte[16]; //TODO
     random.nextBytes(dataKey);
     String encodedWrappedDataKey = null;
@@ -174,7 +174,7 @@ public class WrappedKeyManager {
     else {
       keyMetadata  = wrappedKeyMaterial.getBytes(StandardCharsets.UTF_8);
     }
-    ParquetKey key = new ParquetKey(dataKey, keyMetadata);
+    KeyWithMetadata key = new KeyWithMetadata(dataKey, keyMetadata);
     return key;
   }
 

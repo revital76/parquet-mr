@@ -73,7 +73,7 @@ public class TestEncryption {
     encryptionPropertiesList[1] = encryptionProperties;
     decryptionPropertiesList[1] = decryptionProperties;
 
-    // #2 Default algorithm, non-uniform encryption, key metadata, key retriever, AAD
+    // #2 Default algorithm, non-uniform encryption, key metadata, key retriever, AAD prefix
     byte[] footerKey = new byte[16];
     random.nextBytes(encryptionKey);
     byte[] columnKey0 = new byte[16];
@@ -108,6 +108,17 @@ public class TestEncryption {
     decryptionPropertiesList[2] = decryptionProperties;
 
     // #3 GCM_CTR algorithm, non-uniform encryption, key metadata, key retriever, AAD
+    columnProperties0 = ColumnEncryptionProperties.builder("binary_field")
+        .withKey(columnKey0)
+        .withKeyID("ck0")
+        .build();
+    columnProperties1 = ColumnEncryptionProperties.builder("int32_field")
+        .withKey(columnKey1)
+        .withKeyID("ck1")
+        .build();
+    columnPropertiesMap = new HashMap<ColumnPath, ColumnEncryptionProperties>();
+    columnPropertiesMap.put(columnProperties0.getPath(), columnProperties0);
+    columnPropertiesMap.put(columnProperties1.getPath(), columnProperties1);
     encryptionProperties = FileEncryptionProperties.builder(footerKey)
         .withAlgorithm(ParquetCipher.AES_GCM_CTR_V1)
         .withFooterKeyID("fk")
@@ -118,6 +129,17 @@ public class TestEncryption {
     decryptionPropertiesList[3] = decryptionProperties; // Same decryption properties
 
     // #4  Plaintext footer, default algorithm, key metadata, key retriever, AAD
+    columnProperties0 = ColumnEncryptionProperties.builder("binary_field")
+        .withKey(columnKey0)
+        .withKeyID("ck0")
+        .build();
+    columnProperties1 = ColumnEncryptionProperties.builder("int32_field")
+        .withKey(columnKey1)
+        .withKeyID("ck1")
+        .build();
+    columnPropertiesMap = new HashMap<ColumnPath, ColumnEncryptionProperties>();
+    columnPropertiesMap.put(columnProperties0.getPath(), columnProperties0);
+    columnPropertiesMap.put(columnProperties1.getPath(), columnProperties1);
     encryptionProperties = FileEncryptionProperties.builder(footerKey)
         .withFooterKeyID("fk")
         .withPlaintextFooter()

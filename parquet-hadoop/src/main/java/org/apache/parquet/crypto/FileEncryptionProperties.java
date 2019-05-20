@@ -231,7 +231,7 @@ public class FileEncryptionProperties {
       }
       for (Map.Entry<ColumnPath, ColumnEncryptionProperties> entry : encryptedColumns.entrySet()) {
         if(entry.getValue().isUtilized()) {
-          throw new IllegalArgumentException("Column properties utilized in another file");
+          throw new IllegalArgumentException("Column properties re-used in another file");
         }
         entry.getValue().setUtilized();
       }

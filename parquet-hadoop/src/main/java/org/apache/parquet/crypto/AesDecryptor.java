@@ -24,7 +24,7 @@ import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
+import javax.security.auth.DestroyFailedException;
 
 import static org.apache.parquet.crypto.AesEncryptor.NONCE_LENGTH;
 import static org.apache.parquet.crypto.AesEncryptor.GCM_TAG_LENGTH;
@@ -32,6 +32,7 @@ import static org.apache.parquet.crypto.AesEncryptor.CTR_IV_LENGTH;
 import static org.apache.parquet.crypto.AesEncryptor.CHUNK_LENGTH; 
 import static org.apache.parquet.crypto.AesEncryptor.SIZE_LENGTH;
 
+import org.apache.parquet.ShouldNeverHappenException;
 import org.apache.parquet.crypto.AesEncryptor.Mode;
 import org.apache.parquet.format.BlockCipher;
 
@@ -63,7 +64,7 @@ public class AesDecryptor implements BlockCipher.Decryptor{
       throw new IllegalArgumentException("Null key bytes");
     }
     this.aesMode = mode;
-    aesKey = new SecretKeySpec(keyBytes, "AES");
+    aesKey = new EncryptionKey(keyBytes);
     if (Mode.GCM == mode) {
       tagLength = GCM_TAG_LENGTH;
       try {
@@ -185,9 +186,12 @@ public class AesDecryptor implements BlockCipher.Decryptor{
   }
   
   void wipeOut() {
-    // dereference for GC
-    aesKey = null; // TODO replace with destroy. Doesn't work in Java (bug)
-    aesCipher = null;
+    try {
+      aesKey.destroy();
+    } catch (DestroyFailedException e) {
+      throw new ShouldNeverHappenException(e);
+    }
+    aesCipher = null; // dereference for GC
   }
 }
 

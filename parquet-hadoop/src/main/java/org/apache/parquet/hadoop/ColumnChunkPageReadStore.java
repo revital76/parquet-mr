@@ -124,7 +124,7 @@ class ColumnChunkPageReadStore implements PageReadStore, DictionaryPageReadStore
     
     private short getPageOrdinal(int pageNumber) {
       if (null == pageList) {
-        return (short) pageNumber; // TODO check < max short
+        return (short) pageNumber;
       }
       return pageList.get(pageNumber).shortValue();
     }
@@ -139,7 +139,6 @@ class ColumnChunkPageReadStore implements PageReadStore, DictionaryPageReadStore
     public DataPage readPage() {
       if (hiddenColumn) throw new HiddenColumnException(columnPath);
       if (compressedPages.isEmpty()) {
-        // TODO ordinal??
         return null;
       }
       DataPage compressedPage = compressedPages.remove(0);
@@ -184,7 +183,7 @@ class ColumnChunkPageReadStore implements PageReadStore, DictionaryPageReadStore
         }
 
         @Override
-        public DataPage visit(DataPageV2 dataPageV2) { // TODO simplify (one call to DataPageV2.uncompressed)
+        public DataPage visit(DataPageV2 dataPageV2) {
           if (!dataPageV2.isCompressed()) {
             if (offsetIndex == null) {
               if (null == blockDecryptor) {

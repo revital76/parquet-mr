@@ -58,17 +58,17 @@ public class DirectKeyManager {
     this.kmsClient = kmsClient;
   }
 
-  public ParquetKey getKey(String dataKeyID) throws IOException {
+  public KeyWithMetadata getKey(String dataKeyID) throws IOException {
     String encodedDek;
     try {
       encodedDek = kmsClient.getKeyFromServer(dataKeyID);
     } 
     catch (KeyAccessDeniedException e) {
-      return new ParquetKey((byte[])null, (byte[])null);
+      return new KeyWithMetadata((byte[])null, (byte[])null);
     }
     byte[] dek = Base64.getDecoder().decode(encodedDek);
     byte[] keyMetadata = dataKeyID.getBytes(StandardCharsets.UTF_8);
-    return new ParquetKey(dek, keyMetadata);
+    return new KeyWithMetadata(dek, keyMetadata);
   }
 
   public DecryptionKeyRetriever getKeyRetriever() {

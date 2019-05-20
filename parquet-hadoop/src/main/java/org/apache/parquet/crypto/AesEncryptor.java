@@ -23,8 +23,9 @@ package org.apache.parquet.crypto;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
+import javax.security.auth.DestroyFailedException;
 
+import org.apache.parquet.ShouldNeverHappenException;
 import org.apache.parquet.bytes.BytesUtils;
 import org.apache.parquet.format.BlockCipher;
 
@@ -58,7 +59,7 @@ public class AesEncryptor implements BlockCipher.Encryptor{
   static final int CHUNK_LENGTH = 4 * 1024;
   static final int AAD_FILE_UNIQUE_LENGTH = 8;
 
-  private SecretKeySpec aesKey;
+  private EncryptionKey aesKey;
   private final SecureRandom randomGenerator;
   private final int tagLength;
   private Cipher aesCipher;
@@ -78,7 +79,7 @@ public class AesEncryptor implements BlockCipher.Encryptor{
     if (null == keyBytes) {
       throw new IllegalArgumentException("Null key bytes");
     }
-    aesKey = new SecretKeySpec(keyBytes, "AES");
+    aesKey = new EncryptionKey(keyBytes);
     
     randomGenerator = new SecureRandom();
     aesMode = mode;
@@ -233,9 +234,13 @@ public class AesEncryptor implements BlockCipher.Encryptor{
   }
 
   public void wipeOut() {
-    // dereference for GC
-    aesKey = null; // TODO replace with destroy. Doesn't work in Java (bug)
-    aesCipher = null;
+    
+    try {
+      aesKey.destroy();
+    } catch (DestroyFailedException e) {
+      throw new ShouldNeverHappenException(e);
+    }
+    aesCipher = null; // dereference for GC
   }
 }
 

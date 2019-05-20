@@ -127,7 +127,7 @@ public class FileDecryptionProperties {
       }
       for (Map.Entry<ColumnPath, ColumnDecryptionProperties> entry : columnProperties.entrySet()) {
         if(entry.getValue().isUtilized()) {
-          throw new IllegalArgumentException("Column properties utilized in another file");
+          throw new IllegalArgumentException("Column properties re-used in another file");
         }
         entry.getValue().setUtilized();
       }
@@ -270,5 +270,21 @@ public class FileDecryptionProperties {
 
   void setUtilized() {
     utilized = true;
+  }
+
+  public FileDecryptionProperties deepCopy() {
+    
+    byte[] footerKeyBytes = (null == footerKey?null:footerKey.clone());
+    Map<ColumnPath, ColumnDecryptionProperties> columnProps = null;
+    if (null != columnPropertyMap) {
+      columnProps = new HashMap<ColumnPath, ColumnDecryptionProperties>();
+      for (Map.Entry<ColumnPath, ColumnDecryptionProperties> entry : columnPropertyMap.entrySet()) {
+        columnProps.put(entry.getKey(), entry.getValue().deepClone());
+      }
+    }
+    
+    return new FileDecryptionProperties(footerKeyBytes, keyRetriever,
+        checkPlaintextFooterIntegrity,  aadPrefix, aadPrefixVerifier,
+        columnProps, allowPlaintextFiles);
   }
 }

@@ -294,7 +294,6 @@ public class ParquetFileWriter {
     this(file, schema, mode, rowGroupSize, maxPaddingSize, columnIndexTruncateLength, (FileEncryptionProperties) null);
   }
   
-  //TODO encr param javadoc
   public ParquetFileWriter(OutputFile file, MessageType schema, Mode mode,
                            long rowGroupSize, int maxPaddingSize, int columnIndexTruncateLength,
                            FileEncryptionProperties encryptionProperties)
@@ -714,7 +713,7 @@ public class ParquetFileWriter {
     state = state.endBlock();
     LOG.debug("{}: end block", out.getPos());
     currentBlock.setRowCount(currentRecordCount);
-    currentBlock.setOrdinal((short)blocks.size()); // TODO check ordinal < max short size
+    currentBlock.setOrdinal((short)blocks.size());
     blocks.add(currentBlock);
     columnIndexes.add(currentColumnIndexes);
     offsetIndexes.add(currentOffsetIndexes);
@@ -1007,7 +1006,7 @@ public class ParquetFileWriter {
 
   /**
    * ends a file once all blocks have been written.
-   * closes the file.
+   * closes the file. if encrypted, wipes out the keys in memory.
    * @param extraMetaData the extra meta data to write in the footer
    * @throws IOException if there is an error while writing
    */

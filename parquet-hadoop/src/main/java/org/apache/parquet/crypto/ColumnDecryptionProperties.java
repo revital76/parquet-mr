@@ -125,4 +125,9 @@ public class ColumnDecryptionProperties {
       Arrays.fill(keyBytes, (byte)0);
     }
   }
+
+  ColumnDecryptionProperties deepClone() {
+    byte[] columnKeyBytes = (null == keyBytes?null:keyBytes.clone());
+    return new ColumnDecryptionProperties(columnPath, columnKeyBytes);
+  }
 }
