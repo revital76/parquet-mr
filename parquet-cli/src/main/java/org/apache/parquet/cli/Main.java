@@ -39,6 +39,7 @@ import org.apache.parquet.cli.commands.ShowDictionaryCommand;
 import org.apache.parquet.cli.commands.ShowPagesCommand;
 import org.apache.parquet.cli.commands.ToAvroCommand;
 import org.apache.parquet.cli.commands.EncryptionInteropTests;
+import org.apache.parquet.cli.commands.EncryptionLegacyTest;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
@@ -95,6 +96,7 @@ public class Main extends Configured implements Tool {
     jc.addCommand("catc", new CatCommandCompare(console, 0)); //TODO remove
     jc.addCommand("et", new EncryptionTest(console, 0)); //TODO remove
     jc.addCommand("eit", new EncryptionInteropTests(console));
+    jc.addCommand("elt", new EncryptionLegacyTest(console));
   }
 
   @Override
