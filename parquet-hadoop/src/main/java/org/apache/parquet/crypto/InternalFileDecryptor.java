@@ -115,17 +115,19 @@ public class InternalFileDecryptor {
 
   public void setFileCryptoMetaData(EncryptionAlgorithm algorithm, 
       boolean encryptedFooter, byte[] footerKeyMetaData) throws IOException {
+    
     // first use of the decryptor
     if (!fileCryptoMetaDataProcessed) {
       fileCryptoMetaDataProcessed = true;
       this.encryptedFooter = encryptedFooter;
       this.algorithm = algorithm;
-      byte[] aadFileUnique;
       
+      byte[] aadFileUnique;
+      boolean mustSupplyAadPrefix;
       boolean fileHasAadPrefix = false;
       byte[] aadPrefixInFile = null;
-      boolean mustSupplyAadPrefix = false;
       
+      // Process encryption algorithm metadata
       if (algorithm.isSetAES_GCM_V1()) {
         if (algorithm.getAES_GCM_V1().isSetAad_prefix()) {
           fileHasAadPrefix = true;
@@ -146,12 +148,11 @@ public class InternalFileDecryptor {
         throw new IOException("Unsupported algorithm: " + algorithm);
       }
       
+      // Handle AAD prefix
       byte[] aadPrefix = aadPrefixInProperties;
-      
       if (mustSupplyAadPrefix && (null == aadPrefixInProperties)) {
         throw new IOException("AAD prefix used for file encryption, but not stored in file and not supplied in decryption properties");
       }
-        
       if (fileHasAadPrefix) {
         if (null != aadPrefixInProperties) {
           if (!Arrays.equals(aadPrefixInProperties, aadPrefixInFile)) {
@@ -171,10 +172,15 @@ public class InternalFileDecryptor {
           throw new IOException("ADD Prefix Verifier is set, but AAD Prefix not found in file");
         }
       }
+      if (null == aadPrefix) {
+        this.fileAAD = aadFileUnique;
+      }
+      else {
+        this.fileAAD = AesEncryptor.concatByteArrays(aadPrefix, aadFileUnique);
+      }
 
- 
-      // ignore footer key metadata if footer key is explicitly set via API
-      if (null == footerKey) {
+      // Get footer key
+      if (null == footerKey) { // ignore footer key metadata if footer key is explicitly set via API
         if (encryptedFooter || checkPlaintextFooterIntegrity) {
           if (null == footerKeyMetaData) throw new IOException("No footer key or key metadata");
           if (null == keyRetriever) throw new IOException("No footer key or key retriever");
@@ -188,13 +194,6 @@ public class InternalFileDecryptor {
             throw new IOException("Footer key unavailable");
           }
         }
-      }
-      
-      if (null == aadPrefix) {
-        this.fileAAD = aadFileUnique;
-      }
-      else {
-        this.fileAAD = AesEncryptor.concatByteArrays(aadPrefix, aadFileUnique);
       }
     }
     // re-use of the decryptor. compare the crypto metadata.
