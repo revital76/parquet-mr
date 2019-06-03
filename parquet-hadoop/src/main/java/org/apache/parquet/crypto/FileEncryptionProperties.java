@@ -37,6 +37,8 @@ public class FileEncryptionProperties {
   private static final ParquetCipher ALGORITHM_DEFAULT = ParquetCipher.AES_GCM_V1;
   private static final boolean ENCRYPTED_FOOTER_DEFAULT = true;
   
+  private final ParquetCipher parquetCipher;
+  private final byte[] aadPrefix;
   private final EncryptionAlgorithm algorithm;
   private final boolean encryptedFooter;
   private final byte[] footerKey;
@@ -44,6 +46,7 @@ public class FileEncryptionProperties {
   private final byte[] fileAAD;
   private final Map<ColumnPath, ColumnEncryptionProperties> columnPropertyMap;
   private boolean utilized;
+  private final boolean storeAadPrefixInFile;
 
   
   private FileEncryptionProperties(ParquetCipher cipher, 
@@ -80,6 +83,7 @@ public class FileEncryptionProperties {
       if (!storeAadPrefixInFile) supplyAadPrefix = true;
     }
     
+    this.parquetCipher = cipher;
     this.algorithm = cipher.getEncryptionAlgorithm();
 
     if (algorithm.isSetAES_GCM_V1()) {
@@ -101,6 +105,8 @@ public class FileEncryptionProperties {
     this.footerKeyMetadata = footerKeyMetadata;
     this.encryptedFooter = encryptedFooter;
     this.columnPropertyMap = columnPropertyMap;
+    this.storeAadPrefixInFile = storeAadPrefixInFile;
+    this.aadPrefix = aadPrefix;
   }
   
   /**
@@ -301,5 +307,30 @@ public class FileEncryptionProperties {
         entry.getValue().wipeOutEncryptionKey();
       }
     }
+  }
+  
+  /** EncryptionProperties object can be used for writing one file only.
+   * (at the end, keys are wiped out in the memory).
+   * This method allows to clone identical properties for another file, 
+   * with an option to update the aadPrefix (if newAadPrefix is null, 
+   * aadPrefix will be cloned too) 
+   */
+  public FileEncryptionProperties deepClone(byte[] newAadPrefix) {
+    
+    byte[] footerKeyBytes = (null == footerKey?null:footerKey.clone());
+    Map<ColumnPath, ColumnEncryptionProperties> columnProps = null;
+    if (null != columnPropertyMap) {
+      columnProps = new HashMap<ColumnPath, ColumnEncryptionProperties>();
+      for (Map.Entry<ColumnPath, ColumnEncryptionProperties> entry : columnPropertyMap.entrySet()) {
+        columnProps.put(entry.getKey(), entry.getValue().deepClone());
+      }
+    }
+    
+    if (null == newAadPrefix) newAadPrefix = aadPrefix;
+    
+    return new FileEncryptionProperties(parquetCipher, 
+        footerKeyBytes, footerKeyMetadata, encryptedFooter,
+        newAadPrefix, storeAadPrefixInFile, 
+        columnProps);
   }
 }

@@ -199,4 +199,10 @@ public class ColumnEncryptionProperties {
   void setUtilized() {
     utilized = true;
   }
+
+
+  ColumnEncryptionProperties deepClone() {
+    byte[] columnKeyBytes = (null == keyBytes?null:keyBytes.clone());
+    return new ColumnEncryptionProperties(encrypted, columnPath, columnKeyBytes, keyMetaData);
+  }
 }

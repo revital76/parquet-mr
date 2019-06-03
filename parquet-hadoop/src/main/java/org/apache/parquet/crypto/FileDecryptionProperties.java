@@ -272,7 +272,14 @@ public class FileDecryptionProperties {
     utilized = true;
   }
 
-  public FileDecryptionProperties deepCopy() {
+  /** DecryptionProperties object can be used for reading one file only.
+   * (unless this object keeps the keyRetrieval callback only, and no explicit keys or aadPrefix).
+   * At the end, keys are wiped out in the memory.
+   * This method allows to clone identical properties for another file, 
+   * with an option to update the aadPrefix (if newAadPrefix is null, 
+   * aadPrefix will be cloned too) 
+   */
+  public FileDecryptionProperties deepClone(byte[] newAadPrefix) {
     
     byte[] footerKeyBytes = (null == footerKey?null:footerKey.clone());
     Map<ColumnPath, ColumnDecryptionProperties> columnProps = null;
@@ -283,8 +290,10 @@ public class FileDecryptionProperties {
       }
     }
     
+    if (null == newAadPrefix) newAadPrefix = aadPrefix;
+    
     return new FileDecryptionProperties(footerKeyBytes, keyRetriever,
-        checkPlaintextFooterIntegrity,  aadPrefix, aadPrefixVerifier,
+        checkPlaintextFooterIntegrity,  newAadPrefix, aadPrefixVerifier,
         columnProps, allowPlaintextFiles);
   }
 }

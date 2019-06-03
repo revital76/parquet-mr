@@ -34,12 +34,12 @@ public class InternalFileDecryptor {
   private final FileDecryptionProperties fileDecryptionProperties;
   private final DecryptionKeyRetriever keyRetriever;
   private final boolean checkPlaintextFooterIntegrity;
+  private final byte[] aadPrefixInProperties;
+  private final AADPrefixVerifier aadPrefixVerifier;
   
   private byte[] footerKey;
   private HashMap<ColumnPath, InternalColumnDecryptionSetup> columnMap;
   private EncryptionAlgorithm algorithm;
-  private byte[] aadPrefix;
-  private AADPrefixVerifier aadPrefixVerifier;
   private byte[] fileAAD;
   private boolean encryptedFooter;
   private boolean fileCryptoMetaDataProcessed = false;
@@ -59,7 +59,7 @@ public class InternalFileDecryptor {
     checkPlaintextFooterIntegrity = fileDecryptionProperties.checkFooterIntegrity();
     footerKey = fileDecryptionProperties.getFooterKey();
     keyRetriever = fileDecryptionProperties.getKeyRetriever();
-    aadPrefix = fileDecryptionProperties.getAADPrefix();
+    aadPrefixInProperties = fileDecryptionProperties.getAADPrefix();
     columnMap = new HashMap<ColumnPath, InternalColumnDecryptionSetup>();
     this.aadPrefixVerifier = fileDecryptionProperties.getAADPrefixVerifier();
     this.plaintextFile = false;
@@ -122,44 +122,56 @@ public class InternalFileDecryptor {
       this.algorithm = algorithm;
       byte[] aadFileUnique;
       
+      boolean fileHasAadPrefix = false;
+      byte[] aadPrefixInFile = null;
+      boolean mustSupplyAadPrefix = false;
+      
       if (algorithm.isSetAES_GCM_V1()) {
         if (algorithm.getAES_GCM_V1().isSetAad_prefix()) {
-          if (null != aadPrefix) {
-            if (!Arrays.equals(aadPrefix, algorithm.getAES_GCM_V1().getAad_prefix())) {
-              throw new IOException("ADD Prefix in file and in properties is not the same");
-            }
-          }
-          aadPrefix = algorithm.getAES_GCM_V1().getAad_prefix();
-          if (null != aadPrefixVerifier) {
-            aadPrefixVerifier.check(aadPrefix);
-          }
+          fileHasAadPrefix = true;
+          aadPrefixInFile = algorithm.getAES_GCM_V1().getAad_prefix();
         }
-        if (algorithm.getAES_GCM_V1().isSupply_aad_prefix() && (null == aadPrefix)) {
-          throw new IOException("AAD prefix used for file encryption, but not stored in file and not supplied in decryption properties");
-        }
+        mustSupplyAadPrefix = algorithm.getAES_GCM_V1().isSupply_aad_prefix();
         aadFileUnique = algorithm.getAES_GCM_V1().getAad_file_unique();
       }
       else if (algorithm.isSetAES_GCM_CTR_V1()) {
         if (algorithm.getAES_GCM_CTR_V1().isSetAad_prefix()) {
-          if (null != aadPrefix) {
-            if (!Arrays.equals(aadPrefix, algorithm.getAES_GCM_CTR_V1().getAad_prefix())) {
-              throw new IOException("ADD Prefix in file and in properties is not the same");
-            }
-          }
-          aadPrefix = algorithm.getAES_GCM_CTR_V1().getAad_prefix();
-          if (null != aadPrefixVerifier) {
-            aadPrefixVerifier.check(aadPrefix);
-          }
+          fileHasAadPrefix = true;
+          aadPrefixInFile = algorithm.getAES_GCM_CTR_V1().getAad_prefix();
         }
-        if (algorithm.getAES_GCM_CTR_V1().isSupply_aad_prefix() && (null == aadPrefix)) {
-          throw new IOException("AAD prefix used for file encryption, but not stored in file and not supplied in decryption properties");
-        }
+        mustSupplyAadPrefix = algorithm.getAES_GCM_CTR_V1().isSupply_aad_prefix();
         aadFileUnique = algorithm.getAES_GCM_CTR_V1().getAad_file_unique();
       }
       else {
         throw new IOException("Unsupported algorithm: " + algorithm);
       }
       
+      byte[] aadPrefix = aadPrefixInProperties;
+      
+      if (mustSupplyAadPrefix && (null == aadPrefixInProperties)) {
+        throw new IOException("AAD prefix used for file encryption, but not stored in file and not supplied in decryption properties");
+      }
+        
+      if (fileHasAadPrefix) {
+        if (null != aadPrefixInProperties) {
+          if (!Arrays.equals(aadPrefixInProperties, aadPrefixInFile)) {
+            throw new IOException("ADD Prefix in file and in decryption properties is not the same");
+          }
+        }
+        if (null != aadPrefixVerifier) {
+          aadPrefixVerifier.check(aadPrefixInFile);
+        }
+        aadPrefix = aadPrefixInFile;
+      }
+      else {
+        if (!mustSupplyAadPrefix && (null != aadPrefixInProperties)) {
+          throw new IOException("ADD Prefix set in decryption properties, but was not used for file encryption");
+        }
+        if (null != aadPrefixVerifier) {
+          throw new IOException("ADD Prefix Verifier is set, but AAD Prefix not found in file");
+        }
+      }
+
  
       // ignore footer key metadata if footer key is explicitly set via API
       if (null == footerKey) {

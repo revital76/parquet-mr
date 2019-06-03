@@ -193,7 +193,7 @@ public class ParquetRecordReader<T> extends RecordReader<Void, T> {
           encodings.addAll(column.getEncodings());
         } catch (HiddenColumnException e) {
           LOG.warn("Bypass column {} because it is hidden column so encodings cannot be read", column);
-        }      
+        }
       }
       for (Encoding encoding : encodings) {
         if (CorruptDeltaByteArrays.requiresSequentialReads(meta.getCreatedBy(), encoding)) {

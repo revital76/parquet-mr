@@ -585,7 +585,7 @@ public class ParquetFileReader implements Closeable {
 
     boolean wipeDecryptor = false;
     if (null == fileDecryptor && null != fileDecryptionProperties) { // reading footer only
-      fileDecryptor = new InternalFileDecryptor(fileDecryptionProperties.deepCopy()); // cant re-use same props. will be wiped out.
+      fileDecryptor = new InternalFileDecryptor(fileDecryptionProperties.deepClone(null)); // cant re-use same props. will be wiped out.
       wipeDecryptor = true;
     }
 
@@ -912,11 +912,11 @@ public class ParquetFileReader implements Closeable {
     ConsecutivePartList currentParts = null;
     for (ColumnChunkMetaData mc : block.getColumns()) {
       ColumnPath pathKey = mc.getPath();
-      if (!mc.isHiddenColumn()) {
+      if (!mc.isHiddenColumn()) { //TODO replace with BenchmarkCounter.incrementTotalBytes(block.get..Size());, see above. Test first! compare)
         BenchmarkCounter.incrementTotalBytes(mc.getTotalSize());
       }
       ColumnDescriptor columnDescriptor = paths.get(pathKey);
-      if (columnDescriptor != null) {
+      if (columnDescriptor != null) { // TODO replace with continue. can happen?!
         if (!mc.isHiddenColumn()) { 
           long startingPos = mc.getStartingPos();
           // first part or not consecutive => new list
@@ -993,11 +993,11 @@ public class ParquetFileReader implements Closeable {
     ChunkListBuilder builder = new ChunkListBuilder();
     List<ConsecutivePartList> allParts = new ArrayList<ConsecutivePartList>();
     ConsecutivePartList currentParts = null;
-
+    //TODO ArrayList<Short> pageList = null;
     for (ColumnChunkMetaData mc : block.getColumns()) {
       ColumnPath pathKey = mc.getPath();
       ColumnDescriptor columnDescriptor = paths.get(pathKey);
-      if (columnDescriptor != null) { 
+      if (columnDescriptor != null) { // TODO replace with continue. can happen?!
         if (mc.isHiddenColumn()) {
           if (currentParts == null) {
             currentParts = new ConsecutivePartList(0); // First column(s) is (are) hidden
@@ -1010,7 +1010,9 @@ public class ParquetFileReader implements Closeable {
           OffsetIndex filteredOffsetIndex = filterOffsetIndex(offsetIndex, rowRanges,
               block.getRowCount());
           for (OffsetRange range : calculateOffsetRanges(filteredOffsetIndex, mc, offsetIndex.getOffset(0))) {
+            //if (null == pageList) { // TODO reuse
             ArrayList<Short> pageList = getPageList(range, offsetIndex);
+            //}
             BenchmarkCounter.incrementTotalBytes(range.getLength());
             long startingPos = range.getOffset();
             // first part or not consecutive => new list
@@ -1044,6 +1046,8 @@ public class ParquetFileReader implements Closeable {
     return currentRowGroup;
   }
 
+  // TODO replace: produce page list upon first filtering!!!
+  // TODO optimize (eg start from last range end, etc)
   private static ArrayList<Short> getPageList(OffsetRange range, OffsetIndex offsetIndex) {
     long firstOffset = range.getOffset();
     long lastOffset = firstOffset + range.getLength();
@@ -1052,11 +1056,12 @@ public class ParquetFileReader implements Closeable {
     for (int i=0; i < offsetIndex.getPageCount(); i++) {
       long pageOffset = offsetIndex.getOffset(i);
       if (pageOffset >= firstOffset) {
-        if (pageOffset <= lastOffset) {
+        if (pageOffset <= lastOffset) { // TODO rm Sometimes, pageOffset = lastOffset. why?
           if (pageOffset < lastOffset) {
-            pageList.add(Short.valueOf((short)i));
+            pageList.add(Short.valueOf((short)i)); // TODO check i < max short
           }
           else {
+            if (pageOffset == lastOffset) System.out.println("DDD "+i+" "+pageOffset); // TODO rm
             return pageList;
           }
         }
@@ -1077,6 +1082,7 @@ public class ParquetFileReader implements Closeable {
       currentRowGroup.addHiddenColumn(chunk.descriptor.col);
     }
     else {
+      // TODO keep decryptors in ColumnChunkMetaData?
       ColumnPath columnPath = ColumnPath.get(chunk.descriptor.col.getPath());
       InternalColumnDecryptionSetup columnDecryptionSetup = fileDecryptor.getColumnSetup(columnPath);
       if (!columnDecryptionSetup.isEncrypted()) {
@@ -1158,13 +1164,14 @@ public class ParquetFileReader implements Closeable {
       return null;
     }
 
+    // TODO: this should use getDictionaryPageOffset() but it isn't reliable.
     if (f.getPos() != meta.getStartingPos()) {
       f.seek(meta.getStartingPos());
     }
 
     PageHeader pageHeader = Util.readPageHeader(f);
     if (!pageHeader.isSetDictionary_page_header()) {
-      return null;
+      return null; // TODO: should this complain?
     }
 
     DictionaryPage compressedPage = readCompressedDictionary(pageHeader, f);
@@ -1342,7 +1349,7 @@ public class ParquetFileReader implements Closeable {
       this.offsetIndex = offsetIndex;
     }
 
-    protected PageHeader readPageHeader() throws IOException {
+    protected PageHeader readPageHeader() throws IOException { // TODO rm
       return readPageHeader((BlockCipher.Decryptor) null, (byte[]) null);
     }
 
@@ -1380,11 +1387,23 @@ public class ParquetFileReader implements Closeable {
           }
           else {
             short pageOrdinal = getPageOrdinal(dataPageCountReadSoFar);
-            if (pageOrdinal < 0) break;
+            if (pageOrdinal < 0) break; // TODO!!! hasMorePages is wrong? offsetIndex.getPageCount() > pageList.size... 
+            // TODO this is filtered offsetIndex split into ranges .. for (OffsetRange range : calculateOffsetRanges(filteredOffsetIndex, mc, offsetIndex.getOffset(0))) {
+            // TODO benchmark-filtering_CLUSTERED_9_PAGE_ROW_COUNT_10K
+            // TODO works fine in all benchmark-filtering_SORTED_PAGE_ROW_COUNT_*
             AesEncryptor.quickUpdatePageAAD(dataPageHeaderAAD, pageOrdinal);
           }
         }
         PageHeader pageHeader = readPageHeader(headerBlockDecryptor, pageHeaderAAD);
+        /*
+        PageHeader pageHeader; // TODO rm
+        try {
+          pageHeader = readPageHeader(headerBlockDecryptor, pageHeaderAAD);
+        } catch (Exception e) { // TODO rm
+          System.out.println("BBB rg:"+rowGroupOrdinal+", col: "+ columnOrdinal+", page: "+dataPageCountReadSoFar);
+          if (offsetIndex != null) System.out.println("CCC pLsize: "+descriptor.pageList.size()+" oi.pageCount: "+offsetIndex.getPageCount());
+          throw e;
+        }*/
         int uncompressedPageSize = pageHeader.getUncompressed_page_size();
         int compressedPageSize = pageHeader.getCompressed_page_size();
         switch (pageHeader.type) {
@@ -1470,9 +1489,13 @@ public class ParquetFileReader implements Closeable {
     private short getPageOrdinal(int pageNumber) {
       ArrayList<Short> pageList = descriptor.pageList;
       if (null == pageList) {
-        return (short) pageNumber;
+        return (short) pageNumber; // TODO check < max short
       }
-      if (pageNumber == pageList.size()) {
+      if (pageNumber == pageList.size()) {  // TODO!!! hasMorePages is wrong? offsetIndex.getPageCount() > pageList.size... 
+        // TODO this is filtered offsetIndex split into ranges .. for (OffsetRange range : calculateOffsetRanges(filteredOffsetIndex, mc, offsetIndex.getOffset(0))) {
+        // TODO benchmark-filtering_CLUSTERED_9_PAGE_ROW_COUNT_10K
+        // TODO works fine in all benchmark-filtering_SORTED_PAGE_ROW_COUNT_*
+        //System.out.println("AAA page: "+pageNumber+" oi.count: "+offsetIndex.getPageCount());
         return -1;
       }
       return pageList.get(pageNumber).shortValue();
@@ -1690,7 +1713,7 @@ public class ParquetFileReader implements Closeable {
     Optional<ColumnChunkMetaData> mc = findColumnByPath(block, columnDescriptor.getPath());
 
     return mc.map(column -> new ChunkDescriptor(columnDescriptor, column, false, column.getStartingPos(), 
-        (int) column.getTotalSize(), (ArrayList<Short>)null))
+        (int) column.getTotalSize(), (ArrayList<Short>)null)) // TODO hidden?? encryption. + page list!
         .map(chunk -> readChunk(f, chunk));
   }
 
