@@ -416,8 +416,10 @@ public class EncryptionReaderWriterAllCryptoOptions extends BaseCommand {
     }
   }
 
-  private int ExtractEncryptionConfigurationNumber(String file) {
+  // Check that the decryption result is as expected.
+  private void CheckResult(String file, int exampleId, String exceptionMsg) {
     int encryptionConfigurationNumber = -1;
+    // Extract encryptionConfigurationNumber from the parquet file name.
     Pattern p = Pattern.compile("tester([0-9]+)\\.parquet.encrypted");
     Matcher m = p.matcher(file);
 
@@ -426,12 +428,6 @@ public class EncryptionReaderWriterAllCryptoOptions extends BaseCommand {
     } else {
       System.out.println("Error: Error parsing filename to extract encryption configuration number. ");
     }
-    return encryptionConfigurationNumber;
-  }
-
-
-  private void CheckResult(String file, int exampleId, String exceptionMsg) {
-    int encryptionConfigurationNumber = ExtractEncryptionConfigurationNumber(file);
     int decryptionConfigurationNumber = exampleId + 1;
 
     // Encryption_configuration number five contains aad_prefix and
